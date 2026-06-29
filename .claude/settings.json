@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git --version)",
+      "Bash(gh --version)",
+      "Bash(gh auth *)",
+      "Bash(git init *)",
+      "Bash(git mv *)",
+      "Bash(mv streetster-sound.html index.html)",
+      "Bash(printf \"node_modules/\\\\n.DS_Store\\\\n.netlify/\\\\n\")",
+      "Bash(git add *)"
+    ]
+  }
+}

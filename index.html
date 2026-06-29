@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Streetster Sound</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body {
+  background: #080808;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 36px 24px 40px;
+  overflow: hidden;
+  user-select: none;
+}
+.header { text-align: center; }
+.brand { font-size: 10px; letter-spacing: 0.35em; color: #555; text-transform: uppercase; }
+.title { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; margin-top: 2px; }
+.title span { color: #FF3800; }
+
+/* Tachometer */
+.tacho-wrap { position: relative; width: 270px; height: 270px; }
+.tacho-svg { width: 100%; height: 100%; }
+.rpm-center {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%); text-align: center;
+  pointer-events: none;
+}
+.rpm-num {
+  font-size: 56px; font-weight: 900; line-height: 1;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+}
+.rpm-unit { font-size: 10px; color: #555; letter-spacing: 0.3em; text-transform: uppercase; margin-top: 2px; }
+.state-label { font-size: 11px; color: #444; letter-spacing: 0.2em; text-transform: uppercase; margin-top: 6px; }
+
+/* Status row */
+.status-row {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: #555; letter-spacing: 0.12em; text-transform: uppercase;
+}
+.pip { width: 7px; height: 7px; border-radius: 50%; background: #1E1E1E; transition: all 0.4s; }
+.pip.live { background: #FF3800; box-shadow: 0 0 10px #FF3800aa; }
+
+/* Profile selector */
+.profiles { display: flex; gap: 8px; width: 100%; }
+.prof-btn {
+  flex: 1; height: 42px; border-radius: 10px;
+  border: 1.5px solid #1C1C1C; background: transparent;
+  color: #555; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer;
+  transition: all 0.2s;
+}
+.prof-btn.sel { border-color: #FF3800; color: #FF3800; background: rgba(255,56,0,0.07); }
+
+/* Start button */
+.start-btn {
+  width: 100%; height: 62px; border-radius: 14px;
+  border: none; font-size: 15px; font-weight: 800;
+  letter-spacing: 0.18em; text-transform: uppercase; cursor: pointer;
+  transition: all 0.18s; background: #FF3800; color: #fff;
+  margin-top: 10px;
+}
+.start-btn:active { transform: scale(0.97); opacity: 0.88; }
+.start-btn.on { background: #111; color: #FF3800; border: 1.5px solid #FF3800; }
+
+.hint {
+  font-size: 11px; color: #3A3A3A; text-align: center;
+  margin-top: 10px; line-height: 1.6; min-height: 32px;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="brand">Evoque</div>
+  <div class="title">Street<span>ster</span> Sound</div>
+</div>
+
+<div class="tacho-wrap">
+  <svg class="tacho-svg" viewBox="0 0 270 270" id="svg">
+    <!-- Track -->
+    <path d="M 35 215 A 110 110 0 1 1 235 215"
+      fill="none" stroke="#141414" stroke-width="18" stroke-linecap="round"/>
+    <!-- Fill arc -->
+    <path id="arcFill" d="" fill="none" stroke="#FF3800" stroke-width="18" stroke-linecap="round"/>
+    <!-- Redline overlay -->
+    <path id="arcRed" d="" fill="none" stroke="#FF0000" stroke-width="18" stroke-linecap="round" opacity="0"/>
+    <!-- Needle -->
+    <line id="needle"
+      x1="135" y1="135" x2="135" y2="46"
+      stroke="#FF3800" stroke-width="3.5" stroke-linecap="round"
+      transform="rotate(-140, 135, 135)"/>
+    <!-- Hub -->
+    <circle cx="135" cy="135" r="9" fill="#FF3800"/>
+    <circle cx="135" cy="135" r="4.5" fill="#080808"/>
+  </svg>
+  <div class="rpm-center">
+    <div class="rpm-num" id="rpmNum">0</div>
+    <div class="rpm-unit">RPM</div>
+    <div class="state-label" id="stLbl">OFF</div>
+  </div>
+</div>
+
+<div class="status-row">
+  <div class="pip" id="pip1"></div>
+  <span id="stText">Engine off — tap Start</span>
+  <div class="pip" id="pip2"></div>
+</div>
+
+<div style="width:100%">
+  <div class="profiles">
+    <button class="prof-btn sel" id="p-sport"   onclick="setProf('sport')">Sport</button>
+    <button class="prof-btn"     id="p-vtwin"   onclick="setProf('vtwin')">V-Twin</button>
+    <button class="prof-btn"     id="p-electric" onclick="setProf('electric')">Electric</button>
+  </div>
+  <button class="start-btn" id="startBtn" onclick="toggleEngine()">Start Engine</button>
+  <div class="hint" id="hint">Tap Start — you'll be asked to allow motion access</div>
+</div>
+
+<script>
+// ── Profiles ───────────────────────────────────────────────────────────────────
+const PROFS = {
+  sport: {
+    idle: 1300, max: 9500,
+    harmonics:     [1,    2,    3,    4,    6,    8   ],
+    gains:         [0.55, 0.28, 0.18, 0.12, 0.05, 0.02],
+    noise: 0.04, filterBase: 700,
+    hzFn: rpm => rpm / 60 * 2.2,
+  },
+  vtwin: {
+    idle: 900, max: 6800,
+    harmonics:     [1,    2,    3,    5,    7   ],
+    gains:         [0.7,  0.38, 0.18, 0.08, 0.04],
+    noise: 0.07, filterBase: 550,
+    hzFn: rpm => rpm / 60 * 1.4,
+  },
+  electric: {
+    idle: 250, max: 8500,
+    harmonics:     [1,   2,   4,   8,   16  ],
+    gains:         [0.08,0.25,0.4, 0.2, 0.08],
+    noise: 0.008, filterBase: 2500,
+    hzFn: rpm => rpm / 60 * 3.5,
+  },
+};
+
+let profKey = 'sport';
+function setProf(k) {
+  profKey = k;
+  document.querySelectorAll('.prof-btn').forEach(b => b.classList.remove('sel'));
+  document.getElementById('p-' + k).classList.add('sel');
+  if (running) rebuildOscs();
+}
+
+// ── Audio ──────────────────────────────────────────────────────────────────────
+let ctx, master, filt, noiseGain, noiseSource;
+let oscs = [];
+let running = false, engState = 'off';
+let curRPM = 0, targRPM = 0, raf = null;
+
+function initAudio() {
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
+  filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 700;
+  filt.connect(master);
+  noiseGain = ctx.createGain(); noiseGain.gain.value = 0; noiseGain.connect(filt);
+  // Looping noise buffer
+  const N = ctx.sampleRate * 3;
+  const buf = ctx.createBuffer(1, N, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < N; i++) d[i] = Math.random() * 2 - 1;
+  noiseSource = ctx.createBufferSource();
+  noiseSource.buffer = buf; noiseSource.loop = true;
+  noiseSource.connect(noiseGain); noiseSource.start();
+}
+
+function rebuildOscs() {
+  oscs.forEach(o => { try { o.osc.stop(); } catch(_){} });
+  oscs = [];
+  const p = PROFS[profKey];
+  p.harmonics.forEach((h, i) => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.value = p.hzFn(p.idle) * h;
+    g.gain.value = p.gains[i] * 0.28;
+    osc.connect(g); g.connect(filt); osc.start();
+    oscs.push({ osc, gain: g, h, baseGain: p.gains[i] });
+  });
+}
+
+function applySound(rpm) {
+  if (!ctx || oscs.length === 0) return;
+  const p = PROFS[profKey];
+  const hz = p.hzFn(rpm);
+  const norm = Math.max(0, (rpm - p.idle) / (p.max - p.idle));
+  const t = ctx.currentTime;
+  oscs.forEach(({ osc, gain, h, baseGain }) => {
+    osc.frequency.setTargetAtTime(hz * h, t, 0.04);
+    const hiBoost = h > 2 ? 0.4 + norm * 0.9 : 1;
+    gain.gain.setTargetAtTime(baseGain * hiBoost * 0.28, t, 0.05);
+  });
+  filt.frequency.setTargetAtTime(p.filterBase + norm * 3200, t, 0.1);
+  noiseGain.gain.setTargetAtTime(p.noise * (0.4 + norm * 0.9), t, 0.06);
+}
+
+// ── Motion ─────────────────────────────────────────────────────────────────────
+let pseudoV = 0, lastT = Date.now(), motionOK = false;
+
+function onMotion(e) {
+  const a = e.acceleration || e.accelerationIncludingGravity;
+  if (!a) return;
+  const now = Date.now();
+  const dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
+  const mag = Math.sqrt((a.x||0)**2 + (a.y||0)**2);
+  if (mag > 0.4) pseudoV += mag * dt * 9;
+  pseudoV *= Math.pow(0.90, dt * 60);
+  pseudoV = Math.max(0, Math.min(100, pseudoV));
+}
+
+async function askMotion() {
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    try {
+      const r = await DeviceMotionEvent.requestPermission();
+      if (r === 'granted') { window.addEventListener('devicemotion', onMotion); return true; }
+      return false;
+    } catch { return false; }
+  }
+  window.addEventListener('devicemotion', onMotion);
+  return true;
+}
+
+// ── Engine State ───────────────────────────────────────────────────────────────
+async function toggleEngine() {
+  if (engState === 'off' || engState === 'stopping') await startUp();
+  else shutDown();
+}
+
+async function startUp() {
+  if (!ctx) initAudio();
+  if (ctx.state === 'suspended') await ctx.resume();
+  const motionOK = await askMotion();
+
+  engState = 'starting'; running = true; syncUI();
+  rebuildOscs();
+
+  const p = PROFS[profKey];
+  const t0 = ctx.currentTime;
+  // Crank: ramp from 0 to idle-overshoot then settle
+  master.gain.setValueAtTime(0, t0);
+  master.gain.linearRampToValueAtTime(0.85, t0 + 0.25);
+
+  oscs.forEach(({ osc, h }) => {
+    osc.frequency.setValueAtTime(p.hzFn(120) * h, t0);
+    osc.frequency.linearRampToValueAtTime(p.hzFn(p.idle * 1.45) * h, t0 + 0.7);
+    osc.frequency.linearRampToValueAtTime(p.hzFn(p.idle) * h, t0 + 1.5);
+  });
+  curRPM = 120; targRPM = p.idle;
+
+  document.getElementById('startBtn').textContent = 'Stop Engine';
+  document.getElementById('startBtn').classList.add('on');
+  setHint(motionOK ? 'Motion active — accelerate to rev!' : 'No motion access — accelerometer unavailable');
+
+  setTimeout(() => { engState = 'idle'; syncUI(); loop(); }, 1700);
+}
+
+function shutDown() {
+  engState = 'stopping'; syncUI();
+  if (raf) cancelAnimationFrame(raf); raf = null;
+  window.removeEventListener('devicemotion', onMotion);
+
+  const p = PROFS[profKey];
+  const t = ctx.currentTime;
+  oscs.forEach(({ osc, h }) => {
+    osc.frequency.cancelScheduledValues(t);
+    osc.frequency.setValueAtTime(osc.frequency.value, t);
+    osc.frequency.linearRampToValueAtTime(p.hzFn(p.idle * 0.4) * h, t + 0.7);
+  });
+  master.gain.cancelScheduledValues(t);
+  master.gain.setValueAtTime(master.gain.value, t);
+  master.gain.linearRampToValueAtTime(0, t + 0.9);
+
+  document.getElementById('startBtn').textContent = 'Start Engine';
+  document.getElementById('startBtn').classList.remove('on');
+  setHint('Tap Start — you\'ll be asked to allow motion access');
+
+  setTimeout(() => {
+    engState = 'off'; running = false; curRPM = 0; pseudoV = 0;
+    syncUI(); drawTacho(0);
+  }, 1000);
+}
+
+function loop() {
+  if (!running) return;
+  const p = PROFS[profKey];
+  targRPM = p.idle + (pseudoV / 100) * (p.max - p.idle);
+  curRPM += (targRPM - curRPM) * 0.07;
+  curRPM = Math.max(p.idle * 0.94, Math.min(p.max, curRPM));
+  if (curRPM > p.idle * 1.05) engState = 'running';
+  else if (running) engState = 'idle';
+  applySound(curRPM);
+  drawTacho(curRPM);
+  raf = requestAnimationFrame(loop);
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────────
+const LABELS = { off:'OFF', starting:'CRANKING', idle:'IDLE', running:'RUNNING', stopping:'STOPPING' };
+const TEXTS  = { off:'Engine off — tap Start', starting:'Cranking...', idle:'Idling — accelerate to rev', running:'Running', stopping:'Shutting down...' };
+
+function syncUI() {
+  document.getElementById('stLbl').textContent = LABELS[engState] || '';
+  document.getElementById('stText').textContent = TEXTS[engState] || '';
+  const live = engState !== 'off';
+  document.getElementById('pip1').classList.toggle('live', live);
+  document.getElementById('pip2').classList.toggle('live', live);
+}
+
+function setHint(t) { document.getElementById('hint').textContent = t; }
+
+// ── Tachometer Drawing ─────────────────────────────────────────────────────────
+const CX = 135, CY = 135, R = 110;
+const ARC_START = -230; // degrees from top
+const ARC_SWEEP = 280;
+
+function polar(deg) {
+  const rad = (deg - 90) * Math.PI / 180;
+  return [CX + R * Math.cos(rad), CY + R * Math.sin(rad)];
+}
+
+function arcPath(norm) {
+  if (norm < 0.002) return '';
+  const n = Math.min(norm, 1);
+  const [sx, sy] = polar(ARC_START);
+  const [ex, ey] = polar(ARC_START + ARC_SWEEP * n);
+  const large = ARC_SWEEP * n > 180 ? 1 : 0;
+  return `M ${sx} ${sy} A ${R} ${R} 0 ${large} 1 ${ex} ${ey}`;
+}
+
+function drawTacho(rpm) {
+  const p = PROFS[profKey];
+  const norm = Math.min(rpm / p.max, 1);
+
+  document.getElementById('rpmNum').textContent = Math.round(rpm / 10) * 10;
+
+  // Needle angle: -140deg at 0, +140deg at max
+  const ang = -140 + norm * 280;
+  document.getElementById('needle').setAttribute('transform', `rotate(${ang}, ${CX}, ${CY})`);
+
+  const REDLINE = 0.78;
+  if (norm > REDLINE) {
+    // Normal arc up to redline
+    const [rx, ry] = polar(ARC_START + ARC_SWEEP * REDLINE);
+    const [sx2, sy2] = polar(ARC_START);
+    document.getElementById('arcFill').setAttribute('d', arcPath(REDLINE));
+    // Redline arc
+    const [rsx, rsy] = polar(ARC_START + ARC_SWEEP * REDLINE);
+    const [rex, rey] = polar(ARC_START + ARC_SWEEP * norm);
+    const rl = ARC_SWEEP * (norm - REDLINE) > 180 ? 1 : 0;
+    document.getElementById('arcRed').setAttribute('d',
+      `M ${rsx} ${rsy} A ${R} ${R} 0 ${rl} 1 ${rex} ${rey}`);
+    document.getElementById('arcRed').style.opacity = '1';
+    document.getElementById('needle').setAttribute('stroke', '#FF0000');
+  } else {
+    document.getElementById('arcFill').setAttribute('d', arcPath(norm));
+    document.getElementById('arcRed').style.opacity = '0';
+    document.getElementById('needle').setAttribute('stroke', '#FF3800');
+  }
+}
+
+// init
+drawTacho(0); syncUI();
+</script>
+</body>
+</html>
