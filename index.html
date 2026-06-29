@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Streetster Sound</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%23080808' stroke='%23FF3800' stroke-width='1.5'/%3E%3Ccircle cx='8' cy='8' r='1.6' fill='%23FF3800'/%3E%3C/svg%3E">
 <meta name="description" content="Turn your phone into a synthesized e-bike / motorcycle engine — rev it with real motion or by holding the dial.">
 <meta name="theme-color" content="#080808">
 <meta name="color-scheme" content="dark">
@@ -51,10 +52,10 @@ body {
   pointer-events: none;
 }
 .rpm-num {
-  font-size: clamp(40px, 15vh, 56px); font-weight: 900; line-height: 1;
+  font-size: clamp(36px, 13vh, 52px); font-weight: 900; line-height: 1;
   font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
 }
-.rpm-unit { font-size: 10px; color: #555; letter-spacing: 0.3em; text-transform: uppercase; margin-top: 2px; }
+.rpm-unit { font-size: 10px; color: #555; letter-spacing: 0.3em; text-transform: uppercase; margin-top: 7px; }
 .state-label { font-size: 11px; color: #444; letter-spacing: 0.2em; text-transform: uppercase; margin-top: 6px; }
 
 /* Status row */
@@ -95,7 +96,7 @@ body {
 </head>
 <body>
 
-<div class="version" id="version">v1.0.1</div>
+<div class="version" id="version">v1.0.2</div>
 
 <div class="header">
   <div class="brand">Evoque</div>
@@ -310,7 +311,6 @@ function rebuildOscs() {
 function applySound(rpm) {
   if (!ctx || oscs.length === 0) return;
   const p = PROFS[profKey];
-  const hz = p.hzFn(rpm);
   const norm = Math.max(0, (rpm - p.idle) / (p.max - p.idle));
   const t = ctx.currentTime;
 
@@ -329,6 +329,8 @@ function applySound(rpm) {
     return;
   }
 
+  // Synth-only path below (sample profiles returned above and have no hzFn).
+  const hz = p.hzFn(rpm);
   oscs.forEach(({ osc, gain, h, baseGain }) => {
     osc.frequency.setTargetAtTime(hz * h, t, 0.04);
     const hiBoost = h > 2 ? 0.4 + norm * 0.9 : 1;
@@ -572,9 +574,8 @@ el.tacho.addEventListener('pointerdown', e => { e.preventDefault(); setThrottle(
 ['pointerup', 'pointercancel'].forEach(ev =>
   window.addEventListener(ev, () => setThrottle(false)));
 
-// init — build the audio graph now (suspended). Samples are loaded lazily (only when a
-// profile is actually started/selected) to save bandwidth; startUp() awaits the decode.
-initAudio();
+// init — audio graph + samples are built lazily on the first Start (inside a user
+// gesture), which avoids the browser autoplay warnings. startUp() awaits the decode.
 drawTacho(0); syncUI();
 </script>
 </body>
