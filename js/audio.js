@@ -105,8 +105,7 @@ function rebuildOscs() {
       src.loop = true;
       
       const g = ctx.createGain(); 
-      // Lower gain because it now passes through the synth shaper
-      g.gain.value = (p.sampleGain || 1) * 0.3;
+      g.gain.value = (p.sampleGain || 1) * 1.0;
       src.connect(g); 
       g.connect(oscBus); // Route directly into the synth engine!
       
@@ -138,7 +137,7 @@ function applySound(rpm) {
   const t = ctx.currentTime;
 
   // Overall loudness rises with revs/speed: audible idle, loud under acceleration.
-  master.gain.setTargetAtTime(0.3 + Math.pow(norm, 0.7) * 0.66, t, 0.06);
+  master.gain.setTargetAtTime(0.5 + Math.pow(norm, 0.7) * 1.3, t, 0.06);
 
   // Sample profile: pitch the loop with RPM.
   if (oscs[0].isSample) {
