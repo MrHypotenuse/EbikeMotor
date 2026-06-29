@@ -106,7 +106,7 @@ function loop() {
   // Previously gated by `!motionSeen`, which skipped the decay on any device
   // that fires even one devicemotion event (laptops with accelerometers, etc.),
   // leaving RPM permanently pegged at max.
-  if (throttle) pseudoV = Math.min(100, pseudoV + 2.4);
+  if (throttle) pseudoV = Math.min(100, pseudoV + 1.0);
   else pseudoV = Math.max(0, pseudoV * 0.93 - 0.4);
 
   targRPM = p.idle + (pseudoV / 100) * (p.max - p.idle);

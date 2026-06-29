@@ -16,6 +16,33 @@ function ensureSample(url) {
   return samplePromises[url];
 }
 
+function createSeamlessLoop(origBuffer, startSec, lenSec) {
+  const sr = origBuffer.sampleRate;
+  const startSamp = Math.floor(startSec * sr);
+  const lenSamp = Math.floor(lenSec * sr);
+  // Crossfade duration: up to 50ms
+  const fadeSamp = Math.floor(Math.min(0.05, lenSec * 0.5) * sr);
+
+  const newBuf = ctx.createBuffer(origBuffer.numberOfChannels, lenSamp, sr);
+  for (let c = 0; c < origBuffer.numberOfChannels; c++) {
+    const origData = origBuffer.getChannelData(c);
+    const newData = newBuf.getChannelData(c);
+    
+    for (let i = 0; i < lenSamp; i++) {
+      let val = origData[startSamp + i] || 0;
+      if (i >= lenSamp - fadeSamp) {
+        const progress = (i - (lenSamp - fadeSamp)) / fadeSamp;
+        const outVal = val * (1 - progress);
+        const fadeIndex = startSamp - fadeSamp + (i - (lenSamp - fadeSamp));
+        const inVal = (origData[fadeIndex] || 0) * progress;
+        val = outVal + inVal;
+      }
+      newData[i] = val;
+    }
+  }
+  return newBuf;
+}
+
 function makeDriveCurve(k) {
   const n = 1024, c = new Float32Array(n);
   for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(k * x); }
@@ -67,20 +94,23 @@ function rebuildOscs() {
   // Sample-based profile: loop the recording, pitch it with playbackRate (clean path).
   if (p.sample) {
     if (BUFFERS[p.sample]) {
-      const src = ctx.createBufferSource();
-      src.buffer = BUFFERS[p.sample];
-      src.loop = true;
-      // Loop only a short steady window if the profile defines one, so recordings
-      // that contain their own rev sweep don't "accelerate" on their own at idle.
+      const origBuf = BUFFERS[p.sample];
+      let bufToPlay = origBuf;
       if (p.loopLen) {
-        const dur = src.buffer.duration;
-        const start = Math.min(dur * (p.loopPos || 0), Math.max(0, dur - p.loopLen));
-        src.loopStart = Math.max(0, start);
-        src.loopEnd = Math.min(dur, src.loopStart + p.loopLen);
+        bufToPlay = createSeamlessLoop(origBuf, p.loopPos || 0, p.loopLen);
       }
-      const g = ctx.createGain(); g.gain.value = p.sampleGain || 1;
-      src.connect(g); g.connect(master);
-      src.start(0, src.loopStart || 0);
+      
+      const src = ctx.createBufferSource();
+      src.buffer = bufToPlay;
+      src.loop = true;
+      
+      const g = ctx.createGain(); 
+      // Lower gain because it now passes through the synth shaper
+      g.gain.value = (p.sampleGain || 1) * 0.3;
+      src.connect(g); 
+      g.connect(oscBus); // Route directly into the synth engine!
+      
+      src.start();
       oscs.push({ src, gain: g, isSample: true });
       return;
     }
@@ -110,40 +140,33 @@ function applySound(rpm) {
   // Overall loudness rises with revs/speed: audible idle, loud under acceleration.
   master.gain.setTargetAtTime(0.3 + Math.pow(norm, 0.7) * 0.66, t, 0.06);
 
-  // Sample profile: pitch the loop with RPM (sampleLo→sampleHi range, lower = deeper),
-  // plus a sub-octave sine underneath for extra low-end chest. Other synth layers stay off.
+  // Sample profile: pitch the loop with RPM.
   if (oscs[0].isSample) {
     const rate = p.sampleLo + norm * (p.sampleHi - p.sampleLo);
     oscs[0].src.playbackRate.setTargetAtTime(rate, t, 0.07);
-    noiseGain.gain.setTargetAtTime(0, t, 0.05);
-    fireDepth.gain.setTargetAtTime(0, t, 0.05);
-    sub.frequency.setTargetAtTime(34 + norm * 44, t, 0.06);
-    subGain.gain.setTargetAtTime((p.sampleSub || 0) * (1 + norm * 0.5), t, 0.06);
-    return;
+    // Do NOT return here! Fall through so the MP3 is processed by the synth engine.
+  } else {
+    // Synth-only path below
+    const hz = p.hzFn(rpm);
+    oscs.forEach(({ osc, gain, h, baseGain }) => {
+      osc.frequency.setTargetAtTime(hz * h, t, 0.04);
+      const hiBoost = h > 2 ? 0.4 + norm * 0.9 : 1;
+      gain.gain.setTargetAtTime(baseGain * hiBoost * 0.28, t, 0.05);
+    });
   }
 
-  // Synth-only path below (sample profiles returned above and have no hzFn).
+  // Common synth effects applied to BOTH pure synths and MP3 wavetables!
   const hz = p.hzFn(rpm);
-  oscs.forEach(({ osc, gain, h, baseGain }) => {
-    osc.frequency.setTargetAtTime(hz * h, t, 0.04);
-    const hiBoost = h > 2 ? 0.4 + norm * 0.9 : 1;
-    gain.gain.setTargetAtTime(baseGain * hiBoost * 0.28, t, 0.05);
-  });
   filt.frequency.setTargetAtTime(p.filterBase + norm * 3200, t, 0.1);
   noiseGain.gain.setTargetAtTime(p.noise * (0.4 + norm * 0.9), t, 0.06);
 
-  // Drive harder into the soft-clip as you rev → more grit/aggression up top.
-  // Per-profile drive: V-Twin and 2-Stroke get more grit up top.
   oscBus.gain.setTargetAtTime(p.drive * (0.8 + norm * 0.8), t, 0.05);
-  // Exhaust resonance opens up slightly with RPM.
   formant.frequency.setTargetAtTime(p.bodyHz + norm * 140, t, 0.1);
 
-  // Firing pulses: rate climbs with RPM, depth eases off, plus per-update jitter so
-  // combustion sounds organic/irregular rather than a sterile tone.
   const jitter = 0.95 + Math.random() * 0.1;
   fireLFO.frequency.setTargetAtTime(Math.max(4, rpm / 60 * p.fireMul * jitter), t, 0.02);
   fireDepth.gain.setTargetAtTime(p.firePulse * (1 - norm * 0.5) * jitter, t, 0.04);
-  // Sub-octave body/thump.
+  
   sub.frequency.setTargetAtTime(hz * p.subMul, t, 0.04);
   subGain.gain.setTargetAtTime(p.subLevel * (0.7 + norm * 0.5), t, 0.06);
 }
