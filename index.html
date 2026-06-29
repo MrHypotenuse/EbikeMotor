@@ -6,97 +6,23 @@
 <title>Streetster Sound</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%23080808' stroke='%23FF3800' stroke-width='1.5'/%3E%3Ccircle cx='8' cy='8' r='1.6' fill='%23FF3800'/%3E%3C/svg%3E">
 <meta name="description" content="Turn your phone into a synthesized e-bike / motorcycle engine — rev it with real motion or by holding the dial.">
-<meta name="theme-color" content="#080808">
+<meta name="theme-color" content="#060608">
 <meta name="color-scheme" content="dark">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Streetster">
 <meta name="format-detection" content="telephone=no">
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-body {
-  background: #080808;
-  color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(12px, 3vh, 26px);
-  max-width: 460px;
-  margin: 0 auto;
-  padding: max(20px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
-  overflow-x: hidden;
-  user-select: none;
-}
-.version {
-  position: fixed;
-  top: max(8px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
-  font-size: 9px; letter-spacing: 0.12em; color: #444;
-  font-variant-numeric: tabular-nums; z-index: 10; pointer-events: none;
-}
-.header { text-align: center; }
-.brand { font-size: 10px; letter-spacing: 0.35em; color: #555; text-transform: uppercase; }
-.title { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; margin-top: 2px; }
-.title span { color: #FF3800; }
-
-/* Tachometer */
-.tacho-wrap { position: relative; width: min(270px, 56vh, 82vw); height: min(270px, 56vh, 82vw); flex-shrink: 0; touch-action: none; cursor: pointer; }
-.tacho-svg { width: 100%; height: 100%; }
-.rpm-center {
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%); text-align: center;
-  pointer-events: none;
-}
-.rpm-num {
-  font-size: clamp(36px, 13vh, 52px); font-weight: 900; line-height: 1;
-  font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
-}
-.rpm-unit { font-size: 10px; color: #555; letter-spacing: 0.3em; text-transform: uppercase; margin-top: 7px; }
-.state-label { font-size: 11px; color: #444; letter-spacing: 0.2em; text-transform: uppercase; margin-top: 6px; }
-
-/* Status row */
-.status-row {
-  display: flex; align-items: center; gap: 10px;
-  font-size: 12px; color: #555; letter-spacing: 0.12em; text-transform: uppercase;
-}
-.pip { width: 7px; height: 7px; border-radius: 50%; background: #1E1E1E; transition: all 0.4s; }
-.pip.live { background: #FF3800; box-shadow: 0 0 10px #FF3800aa; }
-
-/* Profile selector */
-.profiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
-.prof-btn {
-  flex: 1; height: 42px; border-radius: 10px;
-  border: 1.5px solid #1C1C1C; background: transparent;
-  color: #555; font-size: 11px; font-weight: 700;
-  letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer;
-  transition: all 0.2s;
-}
-.prof-btn.sel { border-color: #FF3800; color: #FF3800; background: rgba(255,56,0,0.07); }
-
-/* Start button */
-.start-btn {
-  width: 100%; height: 62px; border-radius: 14px;
-  border: none; font-size: 15px; font-weight: 800;
-  letter-spacing: 0.18em; text-transform: uppercase; cursor: pointer;
-  transition: all 0.18s; background: #FF3800; color: #fff;
-  margin-top: 10px;
-}
-.start-btn:active { transform: scale(0.97); opacity: 0.88; }
-.start-btn.on { background: #111; color: #FF3800; border: 1.5px solid #FF3800; }
-
-.hint {
-  font-size: 11px; color: #3A3A3A; text-align: center;
-  margin-top: 10px; line-height: 1.6; min-height: 32px;
-}
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
 
-<div class="version" id="version">v1.0.2</div>
+<div class="ambient-glow" id="ambientGlow"></div>
+
+<div class="version" id="version">v2.0.1</div>
 
 <div class="header">
   <div class="brand">Evoque</div>
@@ -104,22 +30,67 @@ body {
 </div>
 
 <div class="tacho-wrap" id="tachoWrap">
+  <div class="tacho-glass" id="tachoGlass"></div>
   <svg class="tacho-svg" viewBox="0 0 270 270" id="svg" aria-hidden="true">
-    <!-- Track -->
+    <defs>
+      <!-- Gradient for the main arc fill -->
+      <linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#CC4400"/>
+        <stop offset="50%" stop-color="#FF3800"/>
+        <stop offset="100%" stop-color="#FF6B35"/>
+      </linearGradient>
+      <!-- Glow filter for the needle -->
+      <filter id="needleGlow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+      <!-- Stronger glow for redline -->
+      <filter id="needleGlowHot" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+      <!-- Soft glow for the arc -->
+      <filter id="arcGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="3"/>
+      </filter>
+    </defs>
+
+    <!-- Tick marks + labels (drawn by JS) -->
+    <g id="tickGroup"></g>
+
+    <!-- Track (background ring) -->
     <path d="M 35 215 A 110 110 0 1 1 235 215"
-      fill="none" stroke="#141414" stroke-width="18" stroke-linecap="round"/>
+      fill="none" stroke="#141414" stroke-width="16" stroke-linecap="round"/>
+
+    <!-- Arc glow (behind main arc) -->
+    <path id="arcGlowPath" d="" fill="none" stroke="#FF3800" stroke-width="22"
+      stroke-linecap="round" opacity="0.15" filter="url(#arcGlow)"/>
+
     <!-- Fill arc -->
-    <path id="arcFill" d="" fill="none" stroke="#FF3800" stroke-width="18" stroke-linecap="round"/>
+    <path id="arcFill" d="" fill="none" stroke="url(#arcGrad)" stroke-width="16" stroke-linecap="round"/>
+
     <!-- Redline overlay -->
-    <path id="arcRed" d="" fill="none" stroke="#FF0000" stroke-width="18" stroke-linecap="round" opacity="0"/>
+    <path id="arcRed" d="" fill="none" stroke="#FF0000" stroke-width="16"
+      stroke-linecap="round" opacity="0"/>
+
     <!-- Needle -->
     <line id="needle"
-      x1="135" y1="135" x2="135" y2="46"
-      stroke="#FF3800" stroke-width="3.5" stroke-linecap="round"
-      transform="rotate(-140, 135, 135)"/>
-    <!-- Hub -->
-    <circle cx="135" cy="135" r="9" fill="#FF3800"/>
-    <circle cx="135" cy="135" r="4.5" fill="#080808"/>
+      x1="135" y1="135" x2="135" y2="48"
+      stroke="#FF3800" stroke-width="3" stroke-linecap="round"
+      transform="rotate(-140, 135, 135)" filter="url(#needleGlow)"/>
+
+    <!-- Hub ring -->
+    <circle cx="135" cy="135" r="11" fill="none" stroke="#222" stroke-width="1"/>
+    <circle cx="135" cy="135" r="8" fill="#FF3800"/>
+    <circle cx="135" cy="135" r="4" fill="#080808"/>
+    <circle cx="135" cy="135" r="1.5" fill="#FF3800" opacity="0.6"/>
   </svg>
   <div class="rpm-center">
     <div class="rpm-num" id="rpmNum">0</div>
@@ -134,7 +105,7 @@ body {
   <div class="pip" id="pip2"></div>
 </div>
 
-<div style="width:100%">
+<div class="controls-wrap">
   <div class="profiles">
     <button class="prof-btn sel" id="p-inline6"   onclick="setProf('inline6')">Inline-6</button>
     <button class="prof-btn"     id="p-vtwin"     onclick="setProf('vtwin')">V-Twin</button>
@@ -146,437 +117,14 @@ body {
   <div class="hint" id="hint">Tap Start — allow motion on mobile, or hold the dial to rev</div>
 </div>
 
-<script>
-// ── DOM refs (cached — drawTacho/syncUI run every frame) ─────────────────────────
-const $ = id => document.getElementById(id);
-const el = {
-  rpmNum: $('rpmNum'), stLbl: $('stLbl'), stText: $('stText'),
-  pip1: $('pip1'), pip2: $('pip2'), hint: $('hint'),
-  startBtn: $('startBtn'), needle: $('needle'),
-  arcFill: $('arcFill'), arcRed: $('arcRed'), tacho: $('tachoWrap'),
-};
-
-// ── Profiles ───────────────────────────────────────────────────────────────────
-// Sample profiles use real CC0 recordings (archive.org/details/bike-engine-sounds),
-// looped and pitch-shifted by RPM. sampleLo/sampleHi = playback rate at idle / redline
-// (lower = deeper). sampleSub = how much sub-octave body to layer underneath.
-const PROFS = {
-  // Inline-6 — Honda CBX. Deep, smooth, multi-cylinder wail.
-  inline6: {
-    idle: 900, max: 9500,
-    sample: 'inline6.mp3', sampleLo: 0.5, sampleHi: 1.85, sampleGain: 1.7, sampleSub: 0.32,
-  },
-  // V-twin cruiser — Harley Iron 883. Deep, lumpy.
-  vtwin: {
-    idle: 750, max: 5500,
-    sample: 'vtwin.mp3', sampleLo: 0.55, sampleHi: 1.75, sampleGain: 1.7, sampleSub: 0.35,
-    // synth fallback if the file can't load:
-    harmonics: [1, 2, 3, 4], gains: [0.75, 0.45, 0.22, 0.09],
-    noise: 0.10, filterBase: 520, drive: 1.6,
-    fireMul: 0.85, firePulse: 0.85, subMul: 0.5, subLevel: 0.35, bodyHz: 90,
-    hzFn: rpm => rpm / 60 * 1.0,
-  },
-  // 2-stroke — Yamaha RD350 LC. Buzzy, ring-ding, revs high.
-  twostroke: {
-    idle: 1200, max: 9500,
-    sample: 'twostroke.mp3', sampleLo: 0.7, sampleHi: 2.4, sampleGain: 1.8, sampleSub: 0.10,
-  },
-  // Sport — Suzuki GSX-R 600 inline-4. Real superbike scream.
-  sport: {
-    idle: 1400, max: 14000,
-    sample: 'sport.mp3', sampleLo: 0.75, sampleHi: 2.55, sampleGain: 1.7, sampleSub: 0.08,
-  },
-  // Electric — synthesized EV / "Volt bike" gear-whine: a rising tone, no combustion.
-  electric: {
-    idle: 300, max: 11000,
-    harmonics:     [1,    3,    4,    6   ],
-    gains:         [0.06, 0.10, 0.5,  0.30],
-    noise: 0.012, filterBase: 3600, drive: 0.42,
-    fireMul: 8.0, firePulse: 0.0, subMul: 2.0, subLevel: 0.04, bodyHz: 1400,
-    hzFn: rpm => rpm / 60 * 5.5,
-  },
-};
-
-let profKey = 'inline6';
-function setProf(k) {
-  profKey = k;
-  document.querySelectorAll('.prof-btn').forEach(b => b.classList.remove('sel'));
-  $('p-' + k).classList.add('sel');
-  if (!running) return;
-  const p = PROFS[k];
-  if (p.sample && !BUFFERS[p.sample]) {
-    ensureSample(p.sample).then(() => { if (running && profKey === k) rebuildOscs(); }).catch(() => {});
-  } else {
-    rebuildOscs();
-  }
-}
-
-// ── Audio ──────────────────────────────────────────────────────────────────────
-let ctx, master, filt, noiseGain, noiseSource, oscBus, shaper, fireLFO, fireDepth, sub, subGain, formant, formantGain;
-let oscs = [];
-
-// Sample playback: fetch + decode each file once, exposed as a cached promise so
-// startUp() can await the buffer before building the source (no start-up race).
-const BUFFERS = {};
-const samplePromises = {};
-function ensureSample(url) {
-  if (BUFFERS[url]) return Promise.resolve(BUFFERS[url]);
-  if (samplePromises[url]) return samplePromises[url];
-  samplePromises[url] = fetch(url)
-    .then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
-    .then(ab => ctx.decodeAudioData(ab))
-    .then(b => { BUFFERS[url] = b; return b; });
-  return samplePromises[url];
-}
-let running = false, engState = 'off';
-let curRPM = 0, targRPM = 0, raf = null;
-
-function makeDriveCurve(k) {
-  const n = 1024, c = new Float32Array(n);
-  for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(k * x); }
-  return c;
-}
-
-function initAudio() {
-  if (ctx) return;
-  ctx = new (window.AudioContext || window.webkitAudioContext)();
-  master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
-  // Resonant lowpass — the Q peak acts like a throaty formant instead of a flat tone.
-  filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 700; filt.Q.value = 3.5;
-  filt.connect(master);
-  // Soft-clip distortion gives the oscillators grit/rasp instead of a pure synth tone.
-  shaper = ctx.createWaveShaper(); shaper.curve = makeDriveCurve(3.2); shaper.oversample = '4x';
-  shaper.connect(filt);
-  // Parallel high-Q bandpass = the exhaust/pipe resonance ("body") that makes it growl.
-  formant = ctx.createBiquadFilter(); formant.type = 'bandpass'; formant.frequency.value = 120; formant.Q.value = 5;
-  formantGain = ctx.createGain(); formantGain.gain.value = 0.6;
-  shaper.connect(formant); formant.connect(formantGain); formantGain.connect(master);
-  oscBus = ctx.createGain(); oscBus.gain.value = 1; oscBus.connect(shaper);
-  noiseGain = ctx.createGain(); noiseGain.gain.value = 0; noiseGain.connect(filt);
-  // Looping noise buffer
-  const N = ctx.sampleRate * 3;
-  const buf = ctx.createBuffer(1, N, ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < N; i++) d[i] = Math.random() * 2 - 1;
-  noiseSource = ctx.createBufferSource();
-  noiseSource.buffer = buf; noiseSource.loop = true;
-  noiseSource.connect(noiseGain); noiseSource.start();
-
-  // Firing-pulse tremolo: modulates the oscillator bus at the cylinder-firing rate,
-  // giving the rhythmic chug/"potato" instead of a flat tone. Adds to oscBus.gain (base 1).
-  fireLFO = ctx.createOscillator(); fireLFO.type = 'sawtooth'; fireLFO.frequency.value = 20;
-  fireDepth = ctx.createGain(); fireDepth.gain.value = 0;
-  fireLFO.connect(fireDepth); fireDepth.connect(oscBus.gain); fireLFO.start();
-
-  // Sub-octave sine for low-end body/thump (shines through car speakers).
-  sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 30;
-  subGain = ctx.createGain(); subGain.gain.value = 0;
-  sub.connect(subGain); subGain.connect(filt); sub.start();
-}
-
-function rebuildOscs() {
-  oscs.forEach(o => { try { (o.osc || o.src).stop(); } catch(_){} });
-  oscs = [];
-  const p = PROFS[profKey];
-
-  // Sample-based profile: loop the recording, pitch it with playbackRate (clean path).
-  if (p.sample) {
-    if (BUFFERS[p.sample]) {
-      const src = ctx.createBufferSource();
-      src.buffer = BUFFERS[p.sample];
-      src.loop = true;
-      const g = ctx.createGain(); g.gain.value = p.sampleGain || 1;
-      src.connect(g); g.connect(master);
-      src.start();
-      oscs.push({ src, gain: g, isSample: true });
-      return;
-    }
-    // Buffer still decoding. With no synth fallback, stay silent for now —
-    // startUp()/setProf() await ensureSample() and rebuild once it's ready.
-    if (!p.harmonics) return;
-  }
-
-  p.harmonics.forEach((h, i) => {
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.value = p.hzFn(p.idle) * h;
-    osc.detune.value = (Math.random() * 2 - 1) * 9; // slight detune → beating/growl
-    g.gain.value = p.gains[i] * 0.28;
-    osc.connect(g); g.connect(oscBus); osc.start();
-    oscs.push({ osc, gain: g, h, baseGain: p.gains[i] });
-  });
-}
-
-function applySound(rpm) {
-  if (!ctx || oscs.length === 0) return;
-  const p = PROFS[profKey];
-  const norm = Math.max(0, (rpm - p.idle) / (p.max - p.idle));
-  const t = ctx.currentTime;
-
-  // Overall loudness rises with revs/speed: audible idle, loud under acceleration.
-  master.gain.setTargetAtTime(0.3 + Math.pow(norm, 0.7) * 0.66, t, 0.06);
-
-  // Sample profile: pitch the loop with RPM (sampleLo→sampleHi range, lower = deeper),
-  // plus a sub-octave sine underneath for extra low-end chest. Other synth layers stay off.
-  if (oscs[0].isSample) {
-    const rate = p.sampleLo + norm * (p.sampleHi - p.sampleLo);
-    oscs[0].src.playbackRate.setTargetAtTime(rate, t, 0.07);
-    noiseGain.gain.setTargetAtTime(0, t, 0.05);
-    fireDepth.gain.setTargetAtTime(0, t, 0.05);
-    sub.frequency.setTargetAtTime(34 + norm * 44, t, 0.06);
-    subGain.gain.setTargetAtTime((p.sampleSub || 0) * (1 + norm * 0.5), t, 0.06);
-    return;
-  }
-
-  // Synth-only path below (sample profiles returned above and have no hzFn).
-  const hz = p.hzFn(rpm);
-  oscs.forEach(({ osc, gain, h, baseGain }) => {
-    osc.frequency.setTargetAtTime(hz * h, t, 0.04);
-    const hiBoost = h > 2 ? 0.4 + norm * 0.9 : 1;
-    gain.gain.setTargetAtTime(baseGain * hiBoost * 0.28, t, 0.05);
-  });
-  filt.frequency.setTargetAtTime(p.filterBase + norm * 3200, t, 0.1);
-  noiseGain.gain.setTargetAtTime(p.noise * (0.4 + norm * 0.9), t, 0.06);
-
-  // Drive harder into the soft-clip as you rev → more grit/aggression up top.
-  // Per-profile drive keeps Electric clean while V-Twin/Sport get gritty.
-  oscBus.gain.setTargetAtTime(p.drive * (0.8 + norm * 0.8), t, 0.05);
-  // Exhaust resonance opens up slightly with RPM.
-  formant.frequency.setTargetAtTime(p.bodyHz + norm * 140, t, 0.1);
-
-  // Firing pulses: rate climbs with RPM, depth eases off, plus per-update jitter so
-  // combustion sounds organic/irregular rather than a sterile tone.
-  const jitter = 0.95 + Math.random() * 0.1;
-  fireLFO.frequency.setTargetAtTime(Math.max(4, rpm / 60 * p.fireMul * jitter), t, 0.02);
-  fireDepth.gain.setTargetAtTime(p.firePulse * (1 - norm * 0.5) * jitter, t, 0.04);
-  // Sub-octave body/thump.
-  sub.frequency.setTargetAtTime(hz * p.subMul, t, 0.04);
-  subGain.gain.setTargetAtTime(p.subLevel * (0.7 + norm * 0.5), t, 0.06);
-}
-
-// ── Input: motion (mobile) + manual throttle (desktop / no accelerometer) ────────
-let pseudoV = 0, lastT = Date.now(), motionSeen = false, throttle = false;
-
-function onMotion(e) {
-  const a = e.acceleration || e.accelerationIncludingGravity;
-  if (!a) return;
-  motionSeen = true;
-  const now = Date.now();
-  const dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
-  const mag = Math.sqrt((a.x||0)**2 + (a.y||0)**2);
-  if (mag > 0.4) pseudoV += mag * dt * 9;
-  pseudoV *= Math.pow(0.90, dt * 60);
-  pseudoV = Math.max(0, Math.min(100, pseudoV));
-}
-
-// Returns 'granted' | 'denied' | 'insecure' | 'none'
-async function askMotion() {
-  // Motion sensors only work on a secure origin (https:// or localhost).
-  if (!window.isSecureContext) return 'insecure';
-
-  // iOS 13+ : must request permission from a user gesture (the Start tap).
-  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-    try {
-      const r = await DeviceMotionEvent.requestPermission();
-      if (r === 'granted') { window.addEventListener('devicemotion', onMotion); return 'granted'; }
-      return 'denied';
-    } catch { return 'denied'; }
-  }
-
-  // Android / other: devicemotion fires without a prompt when a sensor exists.
-  if (typeof DeviceMotionEvent !== 'undefined') {
-    window.addEventListener('devicemotion', onMotion);
-    return 'granted';
-  }
-  return 'none'; // no motion API (desktop) — manual throttle only
-}
-
-function setThrottle(on) { throttle = on; }
-
-// ── Engine State ───────────────────────────────────────────────────────────────
-async function toggleEngine() {
-  if (engState === 'off' || engState === 'stopping') await startUp();
-  else shutDown();
-}
-
-async function startUp() {
-  // Request motion permission FIRST, while the tap's user activation is still alive.
-  // Awaiting ctx.resume() before this makes iOS drop the gesture and skip the prompt
-  // until a second tap — so order matters here.
-  const motion = await askMotion();
-  if (!ctx) initAudio();
-  if (ctx.state === 'suspended') await ctx.resume();
-  const MOTION_MSG = {
-    granted:  'Motion active — accelerate to rev!',
-    denied:   'Motion blocked — enable Settings ▸ Safari ▸ Motion & Orientation Access, then reload',
-    insecure: 'Open the https:// link (motion needs a secure site) — hold the dial to rev for now',
-    none:     'No accelerometer here — hold the dial to rev',
-  };
-
-  engState = 'starting'; running = true; syncUI();
-  el.startBtn.textContent = 'Stop Engine';
-  el.startBtn.classList.add('on');
-
-  const p = PROFS[profKey];
-  // Make sure the recording is decoded before building the source — this removes the
-  // intermittent "no sound on start" race.
-  if (p.sample && !BUFFERS[p.sample]) {
-    setHint('Loading engine…');
-    try { await ensureSample(p.sample); } catch {}
-    if (!running) return; // user pressed Stop while it was loading
-  }
-
-  rebuildOscs();
-  const t0 = ctx.currentTime;
-  // Crank: ramp from 0 to idle-overshoot then settle
-  master.gain.setValueAtTime(0, t0);
-  master.gain.linearRampToValueAtTime(0.7, t0 + 0.25);
-
-  oscs.forEach(o => {
-    if (o.isSample) {
-      // Crank: spin the recording up from a slow rate to idle pitch.
-      const idleRate = p.sampleLo;
-      o.src.playbackRate.setValueAtTime(idleRate * 0.4, t0);
-      o.src.playbackRate.linearRampToValueAtTime(idleRate * 1.4, t0 + 0.7);
-      o.src.playbackRate.linearRampToValueAtTime(idleRate, t0 + 1.5);
-      return;
-    }
-    const { osc, h } = o;
-    osc.frequency.setValueAtTime(p.hzFn(120) * h, t0);
-    osc.frequency.linearRampToValueAtTime(p.hzFn(p.idle * 1.45) * h, t0 + 0.7);
-    osc.frequency.linearRampToValueAtTime(p.hzFn(p.idle) * h, t0 + 1.5);
-  });
-  curRPM = 120; targRPM = p.idle;
-
-  setHint(MOTION_MSG[motion]);
-
-  setTimeout(() => { engState = 'idle'; syncUI(); loop(); }, 1700);
-}
-
-function shutDown() {
-  engState = 'stopping'; syncUI();
-  if (raf) cancelAnimationFrame(raf); raf = null;
-  window.removeEventListener('devicemotion', onMotion);
-  throttle = false;
-
-  const p = PROFS[profKey];
-  const t = ctx.currentTime;
-  oscs.forEach(o => {
-    if (o.isSample) {
-      o.src.playbackRate.cancelScheduledValues(t);
-      o.src.playbackRate.setValueAtTime(o.src.playbackRate.value, t);
-      o.src.playbackRate.linearRampToValueAtTime(p.sampleLo * 0.4, t + 0.7);
-      return;
-    }
-    const { osc, h } = o;
-    osc.frequency.cancelScheduledValues(t);
-    osc.frequency.setValueAtTime(osc.frequency.value, t);
-    osc.frequency.linearRampToValueAtTime(p.hzFn(p.idle * 0.4) * h, t + 0.7);
-  });
-  master.gain.cancelScheduledValues(t);
-  master.gain.setValueAtTime(master.gain.value, t);
-  master.gain.linearRampToValueAtTime(0, t + 0.9);
-
-  el.startBtn.textContent = 'Start Engine';
-  el.startBtn.classList.remove('on');
-  setHint('Tap Start — allow motion on mobile, or hold the dial to rev');
-
-  setTimeout(() => {
-    engState = 'off'; running = false; curRPM = 0; pseudoV = 0;
-    // Free sources while silent (saves battery); startUp rebuilds them.
-    oscs.forEach(o => { try { (o.osc || o.src).stop(); } catch(_){} });
-    oscs = [];
-    syncUI(); drawTacho(0);
-  }, 1000);
-}
-
-function loop() {
-  if (!running) return;
-  const p = PROFS[profKey];
-  // Manual throttle drives pseudoV when there's no live accelerometer.
-  if (throttle) pseudoV = Math.min(100, pseudoV + 2.4);
-  else if (!motionSeen) pseudoV = Math.max(0, pseudoV * 0.94 - 0.3);
-  targRPM = p.idle + (pseudoV / 100) * (p.max - p.idle);
-  // Higher factor = snappier throttle response (less lag between motion and revs).
-  curRPM += (targRPM - curRPM) * 0.18;
-  curRPM = Math.max(p.idle * 0.94, Math.min(p.max, curRPM));
-  if (curRPM > p.idle * 1.05) engState = 'running';
-  else if (running) engState = 'idle';
-  applySound(curRPM);
-  drawTacho(curRPM);
-  raf = requestAnimationFrame(loop);
-}
-
-// ── UI ─────────────────────────────────────────────────────────────────────────
-const LABELS = { off:'OFF', starting:'CRANKING', idle:'IDLE', running:'RUNNING', stopping:'STOPPING' };
-const TEXTS  = { off:'Engine off — tap Start', starting:'Cranking...', idle:'Idling — accelerate to rev', running:'Running', stopping:'Shutting down...' };
-
-function syncUI() {
-  el.stLbl.textContent = LABELS[engState] || '';
-  el.stText.textContent = TEXTS[engState] || '';
-  const live = engState !== 'off';
-  el.pip1.classList.toggle('live', live);
-  el.pip2.classList.toggle('live', live);
-}
-
-function setHint(t) { el.hint.textContent = t; }
-
-// ── Tachometer Drawing ─────────────────────────────────────────────────────────
-const CX = 135, CY = 135, R = 110;
-const ARC_START = -230; // degrees from top
-const ARC_SWEEP = 280;
-
-function polar(deg) {
-  const rad = (deg - 90) * Math.PI / 180;
-  return [CX + R * Math.cos(rad), CY + R * Math.sin(rad)];
-}
-
-function arcPath(norm) {
-  if (norm < 0.002) return '';
-  const n = Math.min(norm, 1);
-  const [sx, sy] = polar(ARC_START);
-  const [ex, ey] = polar(ARC_START + ARC_SWEEP * n);
-  const large = ARC_SWEEP * n > 180 ? 1 : 0;
-  return `M ${sx} ${sy} A ${R} ${R} 0 ${large} 1 ${ex} ${ey}`;
-}
-
-function drawTacho(rpm) {
-  const p = PROFS[profKey];
-  const norm = Math.min(rpm / p.max, 1);
-
-  el.rpmNum.textContent = Math.round(rpm / 10) * 10;
-
-  // Needle angle: -140deg at 0, +140deg at max
-  const ang = -140 + norm * 280;
-  el.needle.setAttribute('transform', `rotate(${ang}, ${CX}, ${CY})`);
-
-  const REDLINE = 0.78;
-  if (norm > REDLINE) {
-    el.arcFill.setAttribute('d', arcPath(REDLINE));
-    // Redline arc
-    const [rsx, rsy] = polar(ARC_START + ARC_SWEEP * REDLINE);
-    const [rex, rey] = polar(ARC_START + ARC_SWEEP * norm);
-    const rl = ARC_SWEEP * (norm - REDLINE) > 180 ? 1 : 0;
-    el.arcRed.setAttribute('d', `M ${rsx} ${rsy} A ${R} ${R} 0 ${rl} 1 ${rex} ${rey}`);
-    el.arcRed.style.opacity = '1';
-    el.needle.setAttribute('stroke', '#FF0000');
-  } else {
-    el.arcFill.setAttribute('d', arcPath(norm));
-    el.arcRed.style.opacity = '0';
-    el.needle.setAttribute('stroke', '#FF3800');
-  }
-}
-
-// ── Manual throttle binding (hold the dial to rev — desktop / no accelerometer) ──
-el.tacho.addEventListener('pointerdown', e => { e.preventDefault(); setThrottle(true); });
-// Release anywhere (even if the cursor left the dial) so RPM always falls back to idle.
-['pointerup', 'pointercancel'].forEach(ev =>
-  window.addEventListener(ev, () => setThrottle(false)));
-
-// init — audio graph + samples are built lazily on the first Start (inside a user
-// gesture), which avoids the browser autoplay warnings. startUp() awaits the decode.
-drawTacho(0); syncUI();
-</script>
+<!-- Plain (non-module) scripts share one global scope, so the inline onclick
+     handlers above keep working. Load order: refs → data → systems → boot. -->
+<script src="js/dom.js"></script>
+<script src="js/profiles.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/input.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/main.js"></script>
 </body>
 </html>
