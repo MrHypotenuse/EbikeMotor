@@ -15,7 +15,10 @@ function setHint(t) { el.hint.textContent = t; }
 
 // ── Tachometer Drawing ─────────────────────────────────────────────────────────
 const CX = 135, CY = 135, R = 110;
-const ARC_START = -230; // degrees from top
+// Geometry shared by the fill arc, tick marks and needle: 0 sits at lower-left
+// (-140° from top) and sweeps 280° clockwise to max at lower-right, matching the
+// SVG track ring and the needle rotation in drawTacho.
+const ARC_START = -140; // degrees from top
 const ARC_SWEEP = 280;
 
 function polar(deg, r) {
