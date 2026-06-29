@@ -136,8 +136,8 @@ function applySound(rpm) {
   const norm = Math.max(0, (rpm - p.idle) / (p.max - p.idle));
   const t = ctx.currentTime;
 
-  // Overall loudness rises with revs/speed: audible idle, loud under acceleration.
-  master.gain.setTargetAtTime(0.5 + Math.pow(norm, 0.7) * 1.3, t, 0.06);
+  // Quiet at idle, very loud at speed to cut through wind noise.
+  master.gain.setTargetAtTime(0.15 + Math.pow(norm, 0.5) * 2.85, t, 0.06);
 
   // Sample profile: pitch the loop with RPM.
   if (oscs[0].isSample) {
