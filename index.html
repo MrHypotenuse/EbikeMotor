@@ -23,10 +23,10 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 26px;
+  gap: clamp(12px, 3vh, 26px);
   max-width: 460px;
   margin: 0 auto;
-  padding: max(28px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom));
+  padding: max(20px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
   overflow-x: hidden;
   user-select: none;
 }
@@ -36,7 +36,7 @@ body {
 .title span { color: #FF3800; }
 
 /* Tachometer */
-.tacho-wrap { position: relative; width: 270px; height: 270px; flex-shrink: 0; touch-action: none; cursor: pointer; }
+.tacho-wrap { position: relative; width: min(270px, 56vh, 82vw); height: min(270px, 56vh, 82vw); flex-shrink: 0; touch-action: none; cursor: pointer; }
 .tacho-svg { width: 100%; height: 100%; }
 .rpm-center {
   position: absolute; top: 50%; left: 50%;
@@ -44,7 +44,7 @@ body {
   pointer-events: none;
 }
 .rpm-num {
-  font-size: 56px; font-weight: 900; line-height: 1;
+  font-size: clamp(40px, 15vh, 56px); font-weight: 900; line-height: 1;
   font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
 }
 .rpm-unit { font-size: 10px; color: #555; letter-spacing: 0.3em; text-transform: uppercase; margin-top: 2px; }
@@ -225,6 +225,7 @@ function makeDriveCurve(k) {
 }
 
 function initAudio() {
+  if (ctx) return;
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
   // Resonant lowpass — the Q peak acts like a throaty formant instead of a flat tone.
@@ -269,15 +270,20 @@ function rebuildOscs() {
   const p = PROFS[profKey];
 
   // Sample-based profile: loop the recording, pitch it with playbackRate (clean path).
-  if (p.sample && BUFFERS[p.sample]) {
-    const src = ctx.createBufferSource();
-    src.buffer = BUFFERS[p.sample];
-    src.loop = true;
-    const g = ctx.createGain(); g.gain.value = p.sampleGain || 1;
-    src.connect(g); g.connect(master);
-    src.start();
-    oscs.push({ src, gain: g, isSample: true });
-    return;
+  if (p.sample) {
+    if (BUFFERS[p.sample]) {
+      const src = ctx.createBufferSource();
+      src.buffer = BUFFERS[p.sample];
+      src.loop = true;
+      const g = ctx.createGain(); g.gain.value = p.sampleGain || 1;
+      src.connect(g); g.connect(master);
+      src.start();
+      oscs.push({ src, gain: g, isSample: true });
+      return;
+    }
+    // Buffer still decoding. With no synth fallback, stay silent for now —
+    // decodeSample() re-runs rebuildOscs the moment the buffer is ready.
+    if (!p.harmonics) return;
   }
 
   p.harmonics.forEach((h, i) => {
@@ -553,7 +559,8 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { if (e.code === 'Space') setThrottle(false); });
 
-// init
+// init — build the audio graph now (suspended) so samples decode before the first tap.
+initAudio();
 drawTacho(0); syncUI();
 </script>
 </body>
