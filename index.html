@@ -148,7 +148,7 @@ const PROFS = {
     harmonics:     [1,    2,    3,    4,    6,    8   ],
     gains:         [0.55, 0.28, 0.18, 0.12, 0.05, 0.02],
     noise: 0.04, filterBase: 700,
-    fireMul: 2.0, firePulse: 0.30, subMul: 0.5, subLevel: 0.18,
+    fireMul: 2.0, firePulse: 0.30, subMul: 0.5, subLevel: 0.18, bodyHz: 170,
     hzFn: rpm => rpm / 60 * 2.2,
   },
   vtwin: {
@@ -156,7 +156,7 @@ const PROFS = {
     harmonics:     [1,    2,    3,    5,    7   ],
     gains:         [0.7,  0.38, 0.18, 0.08, 0.04],
     noise: 0.07, filterBase: 550,
-    fireMul: 1.0, firePulse: 0.55, subMul: 0.5, subLevel: 0.30,
+    fireMul: 1.0, firePulse: 0.55, subMul: 0.5, subLevel: 0.30, bodyHz: 95,
     hzFn: rpm => rpm / 60 * 1.4,
   },
   electric: {
@@ -164,7 +164,7 @@ const PROFS = {
     harmonics:     [1,   2,   4,   8,   16  ],
     gains:         [0.08,0.25,0.4, 0.2, 0.08],
     noise: 0.008, filterBase: 2500,
-    fireMul: 1.0, firePulse: 0.10, subMul: 1.0, subLevel: 0.06,
+    fireMul: 1.0, firePulse: 0.10, subMul: 1.0, subLevel: 0.06, bodyHz: 480,
     hzFn: rpm => rpm / 60 * 3.5,
   },
 };
@@ -178,7 +178,7 @@ function setProf(k) {
 }
 
 // ── Audio ──────────────────────────────────────────────────────────────────────
-let ctx, master, filt, noiseGain, noiseSource, oscBus, shaper, fireLFO, fireDepth, sub, subGain;
+let ctx, master, filt, noiseGain, noiseSource, oscBus, shaper, fireLFO, fireDepth, sub, subGain, formant, formantGain;
 let oscs = [];
 let running = false, engState = 'off';
 let curRPM = 0, targRPM = 0, raf = null;
@@ -192,11 +192,16 @@ function makeDriveCurve(k) {
 function initAudio() {
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
-  filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 700;
+  // Resonant lowpass — the Q peak acts like a throaty formant instead of a flat tone.
+  filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 700; filt.Q.value = 3.5;
   filt.connect(master);
   // Soft-clip distortion gives the oscillators grit/rasp instead of a pure synth tone.
-  shaper = ctx.createWaveShaper(); shaper.curve = makeDriveCurve(2.6); shaper.oversample = '4x';
+  shaper = ctx.createWaveShaper(); shaper.curve = makeDriveCurve(3.2); shaper.oversample = '4x';
   shaper.connect(filt);
+  // Parallel high-Q bandpass = the exhaust/pipe resonance ("body") that makes it growl.
+  formant = ctx.createBiquadFilter(); formant.type = 'bandpass'; formant.frequency.value = 120; formant.Q.value = 5;
+  formantGain = ctx.createGain(); formantGain.gain.value = 0.6;
+  shaper.connect(formant); formant.connect(formantGain); formantGain.connect(master);
   oscBus = ctx.createGain(); oscBus.gain.value = 1; oscBus.connect(shaper);
   noiseGain = ctx.createGain(); noiseGain.gain.value = 0; noiseGain.connect(filt);
   // Looping noise buffer
@@ -229,6 +234,7 @@ function rebuildOscs() {
     const g = ctx.createGain();
     osc.type = 'sawtooth';
     osc.frequency.value = p.hzFn(p.idle) * h;
+    osc.detune.value = (Math.random() * 2 - 1) * 9; // slight detune → beating/growl
     g.gain.value = p.gains[i] * 0.28;
     osc.connect(g); g.connect(oscBus); osc.start();
     oscs.push({ osc, gain: g, h, baseGain: p.gains[i] });
@@ -249,10 +255,17 @@ function applySound(rpm) {
   filt.frequency.setTargetAtTime(p.filterBase + norm * 3200, t, 0.1);
   noiseGain.gain.setTargetAtTime(p.noise * (0.4 + norm * 0.9), t, 0.06);
 
-  // Firing pulses: rate climbs with RPM; depth eases off so it smooths out at the top.
-  fireLFO.frequency.setTargetAtTime(Math.max(4, rpm / 60 * p.fireMul), t, 0.03);
-  fireDepth.gain.setTargetAtTime(p.firePulse * (1 - norm * 0.5), t, 0.05);
-  // Sub-octave body.
+  // Drive harder into the soft-clip as you rev → more grit/aggression up top.
+  oscBus.gain.setTargetAtTime(0.9 + norm * 1.0, t, 0.05);
+  // Exhaust resonance opens up slightly with RPM.
+  formant.frequency.setTargetAtTime(p.bodyHz + norm * 140, t, 0.1);
+
+  // Firing pulses: rate climbs with RPM, depth eases off, plus per-update jitter so
+  // combustion sounds organic/irregular rather than a sterile tone.
+  const jitter = 0.95 + Math.random() * 0.1;
+  fireLFO.frequency.setTargetAtTime(Math.max(4, rpm / 60 * p.fireMul * jitter), t, 0.02);
+  fireDepth.gain.setTargetAtTime(p.firePulse * (1 - norm * 0.5) * jitter, t, 0.04);
+  // Sub-octave body/thump.
   sub.frequency.setTargetAtTime(hz * p.subMul, t, 0.04);
   subGain.gain.setTargetAtTime(p.subLevel * (0.7 + norm * 0.5), t, 0.06);
 }
@@ -323,7 +336,7 @@ async function startUp() {
   const t0 = ctx.currentTime;
   // Crank: ramp from 0 to idle-overshoot then settle
   master.gain.setValueAtTime(0, t0);
-  master.gain.linearRampToValueAtTime(0.85, t0 + 0.25);
+  master.gain.linearRampToValueAtTime(0.7, t0 + 0.25);
 
   oscs.forEach(({ osc, h }) => {
     osc.frequency.setValueAtTime(p.hzFn(120) * h, t0);
