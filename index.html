@@ -30,6 +30,13 @@ body {
   overflow-x: hidden;
   user-select: none;
 }
+.version {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  font-size: 9px; letter-spacing: 0.12em; color: #444;
+  font-variant-numeric: tabular-nums; z-index: 10; pointer-events: none;
+}
 .header { text-align: center; }
 .brand { font-size: 10px; letter-spacing: 0.35em; color: #555; text-transform: uppercase; }
 .title { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; margin-top: 2px; }
@@ -88,6 +95,8 @@ body {
 </head>
 <body>
 
+<div class="version" id="version">v1.0.0</div>
+
 <div class="header">
   <div class="brand">Evoque</div>
   <div class="title">Street<span>ster</span> Sound</div>
@@ -133,7 +142,7 @@ body {
     <button class="prof-btn"     id="p-electric"  onclick="setProf('electric')">Electric</button>
   </div>
   <button class="start-btn" id="startBtn" onclick="toggleEngine()">Start Engine</button>
-  <div class="hint" id="hint">Tap Start — allow motion on mobile, or hold the dial / press Space to rev</div>
+  <div class="hint" id="hint">Tap Start — allow motion on mobile, or hold the dial to rev</div>
 </div>
 
 <script>
@@ -192,28 +201,31 @@ function setProf(k) {
   profKey = k;
   document.querySelectorAll('.prof-btn').forEach(b => b.classList.remove('sel'));
   $('p-' + k).classList.add('sel');
-  if (running) rebuildOscs();
+  if (!running) return;
+  const p = PROFS[k];
+  if (p.sample && !BUFFERS[p.sample]) {
+    ensureSample(p.sample).then(() => { if (running && profKey === k) rebuildOscs(); }).catch(() => {});
+  } else {
+    rebuildOscs();
+  }
 }
 
 // ── Audio ──────────────────────────────────────────────────────────────────────
 let ctx, master, filt, noiseGain, noiseSource, oscBus, shaper, fireLFO, fireDepth, sub, subGain, formant, formantGain;
 let oscs = [];
 
-// Sample playback: preload the raw bytes now; decode once the AudioContext exists.
+// Sample playback: fetch + decode each file once, exposed as a cached promise so
+// startUp() can await the buffer before building the source (no start-up race).
 const BUFFERS = {};
-const sampleBytes = {};
-['vtwin.mp3', 'inline6.mp3', 'twostroke.mp3', 'sport.mp3'].forEach(url => {
-  fetch(url).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
-    .then(ab => { sampleBytes[url] = ab; if (ctx) decodeSample(url); })
-    .catch(() => {}); // fall back to synth if the file can't be fetched
-});
-function decodeSample(url) {
-  if (!sampleBytes[url] || BUFFERS[url]) return;
-  ctx.decodeAudioData(sampleBytes[url].slice(0)).then(b => {
-    BUFFERS[url] = b;
-    // If we're already running this profile on the synth fallback, swap to the sample.
-    if (running && PROFS[profKey].sample === url) rebuildOscs();
-  }).catch(() => {});
+const samplePromises = {};
+function ensureSample(url) {
+  if (BUFFERS[url]) return Promise.resolve(BUFFERS[url]);
+  if (samplePromises[url]) return samplePromises[url];
+  samplePromises[url] = fetch(url)
+    .then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+    .then(ab => ctx.decodeAudioData(ab))
+    .then(b => { BUFFERS[url] = b; return b; });
+  return samplePromises[url];
 }
 let running = false, engState = 'off';
 let curRPM = 0, targRPM = 0, raf = null;
@@ -259,9 +271,6 @@ function initAudio() {
   sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 30;
   subGain = ctx.createGain(); subGain.gain.value = 0;
   sub.connect(subGain); subGain.connect(filt); sub.start();
-
-  // Decode any samples whose bytes already arrived.
-  Object.keys(sampleBytes).forEach(decodeSample);
 }
 
 function rebuildOscs() {
@@ -282,7 +291,7 @@ function rebuildOscs() {
       return;
     }
     // Buffer still decoding. With no synth fallback, stay silent for now —
-    // decodeSample() re-runs rebuildOscs the moment the buffer is ready.
+    // startUp()/setProf() await ensureSample() and rebuild once it's ready.
     if (!p.harmonics) return;
   }
 
@@ -305,10 +314,10 @@ function applySound(rpm) {
   const norm = Math.max(0, (rpm - p.idle) / (p.max - p.idle));
   const t = ctx.currentTime;
 
-  // Overall loudness rises sharply with revs/speed: quiet idle, loud under acceleration.
-  master.gain.setTargetAtTime(0.16 + Math.pow(norm, 0.7) * 0.8, t, 0.06);
+  // Overall loudness rises with revs/speed: audible idle, loud under acceleration.
+  master.gain.setTargetAtTime(0.3 + Math.pow(norm, 0.7) * 0.66, t, 0.06);
 
-  // Sample profile: pitch the loop with RPM (samplePitch shifts the whole thing deeper),
+  // Sample profile: pitch the loop with RPM (sampleLo→sampleHi range, lower = deeper),
   // plus a sub-octave sine underneath for extra low-end chest. Other synth layers stay off.
   if (oscs[0].isSample) {
     const rate = p.sampleLo + norm * (p.sampleHi - p.sampleLo);
@@ -399,14 +408,24 @@ async function startUp() {
   const MOTION_MSG = {
     granted:  'Motion active — accelerate to rev!',
     denied:   'Motion blocked — enable Settings ▸ Safari ▸ Motion & Orientation Access, then reload',
-    insecure: 'Open the https:// link (motion needs a secure site) — hold the dial / press Space for now',
-    none:     'No accelerometer here — hold the dial or press Space to rev',
+    insecure: 'Open the https:// link (motion needs a secure site) — hold the dial to rev for now',
+    none:     'No accelerometer here — hold the dial to rev',
   };
 
   engState = 'starting'; running = true; syncUI();
-  rebuildOscs();
+  el.startBtn.textContent = 'Stop Engine';
+  el.startBtn.classList.add('on');
 
   const p = PROFS[profKey];
+  // Make sure the recording is decoded before building the source — this removes the
+  // intermittent "no sound on start" race.
+  if (p.sample && !BUFFERS[p.sample]) {
+    setHint('Loading engine…');
+    try { await ensureSample(p.sample); } catch {}
+    if (!running) return; // user pressed Stop while it was loading
+  }
+
+  rebuildOscs();
   const t0 = ctx.currentTime;
   // Crank: ramp from 0 to idle-overshoot then settle
   master.gain.setValueAtTime(0, t0);
@@ -428,8 +447,6 @@ async function startUp() {
   });
   curRPM = 120; targRPM = p.idle;
 
-  el.startBtn.textContent = 'Stop Engine';
-  el.startBtn.classList.add('on');
   setHint(MOTION_MSG[motion]);
 
   setTimeout(() => { engState = 'idle'; syncUI(); loop(); }, 1700);
@@ -461,7 +478,7 @@ function shutDown() {
 
   el.startBtn.textContent = 'Start Engine';
   el.startBtn.classList.remove('on');
-  setHint('Tap Start — allow motion on mobile, or hold the dial / press Space to rev');
+  setHint('Tap Start — allow motion on mobile, or hold the dial to rev');
 
   setTimeout(() => {
     engState = 'off'; running = false; curRPM = 0; pseudoV = 0;
@@ -549,18 +566,16 @@ function drawTacho(rpm) {
   }
 }
 
-// ── Manual throttle bindings (hold the dial / press Space) ───────────────────────
+// ── Manual throttle binding (hold the dial to rev — desktop / no accelerometer) ──
 el.tacho.addEventListener('pointerdown', e => { e.preventDefault(); setThrottle(true); });
 // Release anywhere (even if the cursor left the dial) so RPM always falls back to idle.
 ['pointerup', 'pointercancel'].forEach(ev =>
   window.addEventListener(ev, () => setThrottle(false)));
-window.addEventListener('keydown', e => {
-  if (e.code === 'Space' && !e.repeat) { e.preventDefault(); setThrottle(true); }
-});
-window.addEventListener('keyup', e => { if (e.code === 'Space') setThrottle(false); });
 
-// init — build the audio graph now (suspended) so samples decode before the first tap.
+// init — build the audio graph now (suspended) and preload+decode every sample so the
+// first Start is instant and reliable.
 initAudio();
+['vtwin.mp3', 'inline6.mp3', 'twostroke.mp3', 'sport.mp3'].forEach(u => ensureSample(u).catch(() => {}));
 drawTacho(0); syncUI();
 </script>
 </body>
