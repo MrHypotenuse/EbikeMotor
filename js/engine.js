@@ -35,6 +35,7 @@ async function startUp() {
   }
 
   rebuildOscs();
+  startGPS();
   const t0 = ctx.currentTime;
   // Crank: ramp from 0 to idle-overshoot then settle
   master.gain.setValueAtTime(0, t0);
@@ -74,6 +75,7 @@ function shutDown() {
   engState = 'stopping'; syncUI();
   if (raf) cancelAnimationFrame(raf); raf = null;
   window.removeEventListener('devicemotion', onMotion);
+  stopGPS();
   throttle = false;
 
   const p = PROFS[profKey];
