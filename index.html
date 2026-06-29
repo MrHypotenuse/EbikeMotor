@@ -18,13 +18,16 @@ body {
   background: #080808;
   color: #fff;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
-  height: 100dvh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: max(36px, env(safe-area-inset-top)) 24px max(40px, env(safe-area-inset-bottom));
-  overflow: hidden;
+  justify-content: center;
+  gap: 26px;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: max(28px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom));
+  overflow-x: hidden;
   user-select: none;
 }
 .header { text-align: center; }
@@ -33,7 +36,7 @@ body {
 .title span { color: #FF3800; }
 
 /* Tachometer */
-.tacho-wrap { position: relative; width: 270px; height: 270px; touch-action: none; cursor: pointer; }
+.tacho-wrap { position: relative; width: 270px; height: 270px; flex-shrink: 0; touch-action: none; cursor: pointer; }
 .tacho-svg { width: 100%; height: 100%; }
 .rpm-center {
   position: absolute; top: 50%; left: 50%;
@@ -56,7 +59,7 @@ body {
 .pip.live { background: #FF3800; box-shadow: 0 0 10px #FF3800aa; }
 
 /* Profile selector */
-.profiles { display: flex; gap: 8px; width: 100%; }
+.profiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
 .prof-btn {
   flex: 1; height: 42px; border-radius: 10px;
   border: 1.5px solid #1C1C1C; background: transparent;
@@ -123,9 +126,11 @@ body {
 
 <div style="width:100%">
   <div class="profiles">
-    <button class="prof-btn sel" id="p-sport"   onclick="setProf('sport')">Sport</button>
-    <button class="prof-btn"     id="p-vtwin"   onclick="setProf('vtwin')">V-Twin</button>
-    <button class="prof-btn"     id="p-electric" onclick="setProf('electric')">Electric</button>
+    <button class="prof-btn sel" id="p-inline6"   onclick="setProf('inline6')">Inline-6</button>
+    <button class="prof-btn"     id="p-vtwin"     onclick="setProf('vtwin')">V-Twin</button>
+    <button class="prof-btn"     id="p-twostroke" onclick="setProf('twostroke')">2-Stroke</button>
+    <button class="prof-btn"     id="p-sport"     onclick="setProf('sport')">Sport</button>
+    <button class="prof-btn"     id="p-electric"  onclick="setProf('electric')">Electric</button>
   </div>
   <button class="start-btn" id="startBtn" onclick="toggleEngine()">Start Engine</button>
   <div class="hint" id="hint">Tap Start — allow motion on mobile, or hold the dial / press Space to rev</div>
@@ -142,39 +147,47 @@ const el = {
 };
 
 // ── Profiles ───────────────────────────────────────────────────────────────────
+// Sample profiles use real CC0 recordings (archive.org/details/bike-engine-sounds),
+// looped and pitch-shifted by RPM. sampleLo/sampleHi = playback rate at idle / redline
+// (lower = deeper). sampleSub = how much sub-octave body to layer underneath.
 const PROFS = {
-  // Inline-4 superbike: smooth, bright, screams to redline. Fast even firing.
-  sport: {
-    idle: 1400, max: 12000,
-    harmonics:     [1,    2,    3,    4,    5,    6   ],
-    gains:         [0.40, 0.30, 0.24, 0.18, 0.12, 0.07],
-    noise: 0.03, filterBase: 1100, drive: 1.25,
-    fireMul: 2.0, firePulse: 0.16, subMul: 0.5, subLevel: 0.12, bodyHz: 240,
-    hzFn: rpm => rpm / 60 * 2.0,
+  // Inline-6 — Honda CBX. Deep, smooth, multi-cylinder wail.
+  inline6: {
+    idle: 900, max: 9500,
+    sample: 'inline6.mp3', sampleLo: 0.5, sampleHi: 1.85, sampleGain: 1.7, sampleSub: 0.32,
   },
-  // V-twin cruiser: real recorded Harley loop, pitch-shifted by RPM.
-  // (Synth params kept as a fallback if the sample fails to load.)
+  // V-twin cruiser — Harley Iron 883. Deep, lumpy.
   vtwin: {
     idle: 750, max: 5500,
-    sample: 'vtwin.mp3', sampleRpm: 1000, sampleGain: 1.7, samplePitch: 0.7,
-    harmonics:     [1,    2,    3,    4   ],
-    gains:         [0.75, 0.45, 0.22, 0.09],
+    sample: 'vtwin.mp3', sampleLo: 0.55, sampleHi: 1.75, sampleGain: 1.7, sampleSub: 0.35,
+    // synth fallback if the file can't load:
+    harmonics: [1, 2, 3, 4], gains: [0.75, 0.45, 0.22, 0.09],
     noise: 0.10, filterBase: 520, drive: 1.6,
     fireMul: 0.85, firePulse: 0.85, subMul: 0.5, subLevel: 0.35, bodyHz: 90,
     hzFn: rpm => rpm / 60 * 1.0,
   },
-  // Electric: clean high whine, no combustion pulse, rises smoothly. Upper-harmonic heavy.
+  // 2-stroke — Yamaha RD350 LC. Buzzy, ring-ding, revs high.
+  twostroke: {
+    idle: 1200, max: 9500,
+    sample: 'twostroke.mp3', sampleLo: 0.7, sampleHi: 2.4, sampleGain: 1.8, sampleSub: 0.10,
+  },
+  // Sport — Suzuki GSX-R 600 inline-4. Real superbike scream.
+  sport: {
+    idle: 1400, max: 14000,
+    sample: 'sport.mp3', sampleLo: 0.75, sampleHi: 2.55, sampleGain: 1.7, sampleSub: 0.08,
+  },
+  // Electric — synthesized EV / "Volt bike" gear-whine: a rising tone, no combustion.
   electric: {
-    idle: 200, max: 9000,
-    harmonics:     [1,    2,    4,    6   ],
-    gains:         [0.05, 0.30, 0.45, 0.16],
-    noise: 0.004, filterBase: 3200, drive: 0.55,
-    fireMul: 6.0, firePulse: 0.03, subMul: 1.0, subLevel: 0.03, bodyHz: 700,
-    hzFn: rpm => rpm / 60 * 4.0,
+    idle: 300, max: 11000,
+    harmonics:     [1,    3,    4,    6   ],
+    gains:         [0.06, 0.10, 0.5,  0.30],
+    noise: 0.012, filterBase: 3600, drive: 0.42,
+    fireMul: 8.0, firePulse: 0.0, subMul: 2.0, subLevel: 0.04, bodyHz: 1400,
+    hzFn: rpm => rpm / 60 * 5.5,
   },
 };
 
-let profKey = 'sport';
+let profKey = 'inline6';
 function setProf(k) {
   profKey = k;
   document.querySelectorAll('.prof-btn').forEach(b => b.classList.remove('sel'));
@@ -189,7 +202,7 @@ let oscs = [];
 // Sample playback: preload the raw bytes now; decode once the AudioContext exists.
 const BUFFERS = {};
 const sampleBytes = {};
-['vtwin.mp3'].forEach(url => {
+['vtwin.mp3', 'inline6.mp3', 'twostroke.mp3', 'sport.mp3'].forEach(url => {
   fetch(url).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
     .then(ab => { sampleBytes[url] = ab; if (ctx) decodeSample(url); })
     .catch(() => {}); // fall back to synth if the file can't be fetched
@@ -286,18 +299,18 @@ function applySound(rpm) {
   const norm = Math.max(0, (rpm - p.idle) / (p.max - p.idle));
   const t = ctx.currentTime;
 
-  // Overall loudness rises with revs/speed (quiet at idle, full at redline).
-  master.gain.setTargetAtTime(0.42 + norm * 0.48, t, 0.08);
+  // Overall loudness rises sharply with revs/speed: quiet idle, loud under acceleration.
+  master.gain.setTargetAtTime(0.16 + Math.pow(norm, 0.7) * 0.8, t, 0.06);
 
   // Sample profile: pitch the loop with RPM (samplePitch shifts the whole thing deeper),
   // plus a sub-octave sine underneath for extra low-end chest. Other synth layers stay off.
   if (oscs[0].isSample) {
-    const rate = Math.min(2.6, Math.max(0.4, rpm / p.sampleRpm * (p.samplePitch || 1)));
+    const rate = p.sampleLo + norm * (p.sampleHi - p.sampleLo);
     oscs[0].src.playbackRate.setTargetAtTime(rate, t, 0.07);
     noiseGain.gain.setTargetAtTime(0, t, 0.05);
     fireDepth.gain.setTargetAtTime(0, t, 0.05);
-    sub.frequency.setTargetAtTime(34 + norm * 40, t, 0.06);
-    subGain.gain.setTargetAtTime(0.35 + norm * 0.25, t, 0.06);
+    sub.frequency.setTargetAtTime(34 + norm * 44, t, 0.06);
+    subGain.gain.setTargetAtTime((p.sampleSub || 0) * (1 + norm * 0.5), t, 0.06);
     return;
   }
 
@@ -395,9 +408,9 @@ async function startUp() {
 
   oscs.forEach(o => {
     if (o.isSample) {
-      // Crank: spin the recording up from a slow rate to the (deeper) idle pitch.
-      const idleRate = p.idle / p.sampleRpm * (p.samplePitch || 1);
-      o.src.playbackRate.setValueAtTime(0.3, t0);
+      // Crank: spin the recording up from a slow rate to idle pitch.
+      const idleRate = p.sampleLo;
+      o.src.playbackRate.setValueAtTime(idleRate * 0.4, t0);
       o.src.playbackRate.linearRampToValueAtTime(idleRate * 1.4, t0 + 0.7);
       o.src.playbackRate.linearRampToValueAtTime(idleRate, t0 + 1.5);
       return;
@@ -428,7 +441,7 @@ function shutDown() {
     if (o.isSample) {
       o.src.playbackRate.cancelScheduledValues(t);
       o.src.playbackRate.setValueAtTime(o.src.playbackRate.value, t);
-      o.src.playbackRate.linearRampToValueAtTime(0.4, t + 0.7);
+      o.src.playbackRate.linearRampToValueAtTime(p.sampleLo * 0.4, t + 0.7);
       return;
     }
     const { osc, h } = o;
@@ -532,8 +545,9 @@ function drawTacho(rpm) {
 
 // ── Manual throttle bindings (hold the dial / press Space) ───────────────────────
 el.tacho.addEventListener('pointerdown', e => { e.preventDefault(); setThrottle(true); });
-['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
-  el.tacho.addEventListener(ev, () => setThrottle(false)));
+// Release anywhere (even if the cursor left the dial) so RPM always falls back to idle.
+['pointerup', 'pointercancel'].forEach(ev =>
+  window.addEventListener(ev, () => setThrottle(false)));
 window.addEventListener('keydown', e => {
   if (e.code === 'Space' && !e.repeat) { e.preventDefault(); setThrottle(true); }
 });
