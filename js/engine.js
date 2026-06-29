@@ -56,9 +56,18 @@ async function startUp() {
   });
   curRPM = 120; targRPM = p.idle;
 
-  setHint(MOTION_MSG[motion]);
-
-  setTimeout(() => { engState = 'idle'; syncUI(); loop(); }, 1700);
+  // 5-second countdown so the user can pocket the phone before motion kicks in.
+  const countDown = (sec) => {
+    if (!running) return;
+    if (sec > 0) {
+      setHint(`Starting in ${sec}… put your phone away!`);
+      setTimeout(() => countDown(sec - 1), 1000);
+    } else {
+      setHint(MOTION_MSG[motion]);
+      engState = 'idle'; syncUI(); loop();
+    }
+  };
+  setTimeout(() => countDown(5), 1700);
 }
 
 function shutDown() {

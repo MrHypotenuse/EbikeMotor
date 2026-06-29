@@ -137,7 +137,7 @@ function applySound(rpm) {
   const t = ctx.currentTime;
 
   // Quiet at idle, very loud at speed to cut through wind noise.
-  master.gain.setTargetAtTime(0.15 + Math.pow(norm, 0.5) * 2.85, t, 0.06);
+  master.gain.setTargetAtTime(0.05 + Math.pow(norm, 0.5) * 2.95, t, 0.06);
 
   // Sample profile: pitch the loop with RPM.
   if (oscs[0].isSample) {
