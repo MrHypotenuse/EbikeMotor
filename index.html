@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Streetster Sound</title>
+<meta name="description" content="Turn your phone into a synthesized e-bike / motorcycle engine — rev it with real motion or by holding the dial.">
+<meta name="theme-color" content="#080808">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Streetster">
+<meta name="format-detection" content="telephone=no">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 body {
@@ -15,7 +23,7 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  padding: 36px 24px 40px;
+  padding: max(36px, env(safe-area-inset-top)) 24px max(40px, env(safe-area-inset-bottom));
   overflow: hidden;
   user-select: none;
 }
@@ -25,7 +33,7 @@ body {
 .title span { color: #FF3800; }
 
 /* Tachometer */
-.tacho-wrap { position: relative; width: 270px; height: 270px; }
+.tacho-wrap { position: relative; width: 270px; height: 270px; touch-action: none; cursor: pointer; }
 .tacho-svg { width: 100%; height: 100%; }
 .rpm-center {
   position: absolute; top: 50%; left: 50%;
@@ -82,8 +90,8 @@ body {
   <div class="title">Street<span>ster</span> Sound</div>
 </div>
 
-<div class="tacho-wrap">
-  <svg class="tacho-svg" viewBox="0 0 270 270" id="svg">
+<div class="tacho-wrap" id="tachoWrap">
+  <svg class="tacho-svg" viewBox="0 0 270 270" id="svg" aria-hidden="true">
     <!-- Track -->
     <path d="M 35 215 A 110 110 0 1 1 235 215"
       fill="none" stroke="#141414" stroke-width="18" stroke-linecap="round"/>
@@ -120,10 +128,19 @@ body {
     <button class="prof-btn"     id="p-electric" onclick="setProf('electric')">Electric</button>
   </div>
   <button class="start-btn" id="startBtn" onclick="toggleEngine()">Start Engine</button>
-  <div class="hint" id="hint">Tap Start — you'll be asked to allow motion access</div>
+  <div class="hint" id="hint">Tap Start — allow motion on mobile, or hold the dial / press Space to rev</div>
 </div>
 
 <script>
+// ── DOM refs (cached — drawTacho/syncUI run every frame) ─────────────────────────
+const $ = id => document.getElementById(id);
+const el = {
+  rpmNum: $('rpmNum'), stLbl: $('stLbl'), stText: $('stText'),
+  pip1: $('pip1'), pip2: $('pip2'), hint: $('hint'),
+  startBtn: $('startBtn'), needle: $('needle'),
+  arcFill: $('arcFill'), arcRed: $('arcRed'), tacho: $('tachoWrap'),
+};
+
 // ── Profiles ───────────────────────────────────────────────────────────────────
 const PROFS = {
   sport: {
@@ -153,21 +170,31 @@ let profKey = 'sport';
 function setProf(k) {
   profKey = k;
   document.querySelectorAll('.prof-btn').forEach(b => b.classList.remove('sel'));
-  document.getElementById('p-' + k).classList.add('sel');
+  $('p-' + k).classList.add('sel');
   if (running) rebuildOscs();
 }
 
 // ── Audio ──────────────────────────────────────────────────────────────────────
-let ctx, master, filt, noiseGain, noiseSource;
+let ctx, master, filt, noiseGain, noiseSource, oscBus, shaper;
 let oscs = [];
 let running = false, engState = 'off';
 let curRPM = 0, targRPM = 0, raf = null;
+
+function makeDriveCurve(k) {
+  const n = 1024, c = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(k * x); }
+  return c;
+}
 
 function initAudio() {
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
   filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 700;
   filt.connect(master);
+  // Soft-clip distortion gives the oscillators grit/rasp instead of a pure synth tone.
+  shaper = ctx.createWaveShaper(); shaper.curve = makeDriveCurve(2.6); shaper.oversample = '4x';
+  shaper.connect(filt);
+  oscBus = ctx.createGain(); oscBus.gain.value = 1; oscBus.connect(shaper);
   noiseGain = ctx.createGain(); noiseGain.gain.value = 0; noiseGain.connect(filt);
   // Looping noise buffer
   const N = ctx.sampleRate * 3;
@@ -189,7 +216,7 @@ function rebuildOscs() {
     osc.type = 'sawtooth';
     osc.frequency.value = p.hzFn(p.idle) * h;
     g.gain.value = p.gains[i] * 0.28;
-    osc.connect(g); g.connect(filt); osc.start();
+    osc.connect(g); g.connect(oscBus); osc.start();
     oscs.push({ osc, gain: g, h, baseGain: p.gains[i] });
   });
 }
@@ -209,12 +236,13 @@ function applySound(rpm) {
   noiseGain.gain.setTargetAtTime(p.noise * (0.4 + norm * 0.9), t, 0.06);
 }
 
-// ── Motion ─────────────────────────────────────────────────────────────────────
-let pseudoV = 0, lastT = Date.now(), motionOK = false;
+// ── Input: motion (mobile) + manual throttle (desktop / no accelerometer) ────────
+let pseudoV = 0, lastT = Date.now(), motionSeen = false, throttle = false;
 
 function onMotion(e) {
   const a = e.acceleration || e.accelerationIncludingGravity;
   if (!a) return;
+  motionSeen = true;
   const now = Date.now();
   const dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
   const mag = Math.sqrt((a.x||0)**2 + (a.y||0)**2);
@@ -223,17 +251,29 @@ function onMotion(e) {
   pseudoV = Math.max(0, Math.min(100, pseudoV));
 }
 
+// Returns 'granted' | 'denied' | 'insecure' | 'none'
 async function askMotion() {
+  // Motion sensors only work on a secure origin (https:// or localhost).
+  if (!window.isSecureContext) return 'insecure';
+
+  // iOS 13+ : must request permission from a user gesture (the Start tap).
   if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
     try {
       const r = await DeviceMotionEvent.requestPermission();
-      if (r === 'granted') { window.addEventListener('devicemotion', onMotion); return true; }
-      return false;
-    } catch { return false; }
+      if (r === 'granted') { window.addEventListener('devicemotion', onMotion); return 'granted'; }
+      return 'denied';
+    } catch { return 'denied'; }
   }
-  window.addEventListener('devicemotion', onMotion);
-  return true;
+
+  // Android / other: devicemotion fires without a prompt when a sensor exists.
+  if (typeof DeviceMotionEvent !== 'undefined') {
+    window.addEventListener('devicemotion', onMotion);
+    return 'granted';
+  }
+  return 'none'; // no motion API (desktop) — manual throttle only
 }
+
+function setThrottle(on) { throttle = on; }
 
 // ── Engine State ───────────────────────────────────────────────────────────────
 async function toggleEngine() {
@@ -244,7 +284,13 @@ async function toggleEngine() {
 async function startUp() {
   if (!ctx) initAudio();
   if (ctx.state === 'suspended') await ctx.resume();
-  const motionOK = await askMotion();
+  const motion = await askMotion();
+  const MOTION_MSG = {
+    granted:  'Motion active — accelerate to rev!',
+    denied:   'Motion blocked — enable Settings ▸ Safari ▸ Motion & Orientation Access, then reload',
+    insecure: 'Open the https:// link (motion needs a secure site) — hold the dial / press Space for now',
+    none:     'No accelerometer here — hold the dial or press Space to rev',
+  };
 
   engState = 'starting'; running = true; syncUI();
   rebuildOscs();
@@ -262,9 +308,9 @@ async function startUp() {
   });
   curRPM = 120; targRPM = p.idle;
 
-  document.getElementById('startBtn').textContent = 'Stop Engine';
-  document.getElementById('startBtn').classList.add('on');
-  setHint(motionOK ? 'Motion active — accelerate to rev!' : 'No motion access — accelerometer unavailable');
+  el.startBtn.textContent = 'Stop Engine';
+  el.startBtn.classList.add('on');
+  setHint(MOTION_MSG[motion]);
 
   setTimeout(() => { engState = 'idle'; syncUI(); loop(); }, 1700);
 }
@@ -273,6 +319,7 @@ function shutDown() {
   engState = 'stopping'; syncUI();
   if (raf) cancelAnimationFrame(raf); raf = null;
   window.removeEventListener('devicemotion', onMotion);
+  throttle = false;
 
   const p = PROFS[profKey];
   const t = ctx.currentTime;
@@ -285,12 +332,15 @@ function shutDown() {
   master.gain.setValueAtTime(master.gain.value, t);
   master.gain.linearRampToValueAtTime(0, t + 0.9);
 
-  document.getElementById('startBtn').textContent = 'Start Engine';
-  document.getElementById('startBtn').classList.remove('on');
-  setHint('Tap Start — you\'ll be asked to allow motion access');
+  el.startBtn.textContent = 'Start Engine';
+  el.startBtn.classList.remove('on');
+  setHint('Tap Start — allow motion on mobile, or hold the dial / press Space to rev');
 
   setTimeout(() => {
     engState = 'off'; running = false; curRPM = 0; pseudoV = 0;
+    // Free oscillators while silent (saves battery); startUp rebuilds them.
+    oscs.forEach(o => { try { o.osc.stop(); } catch(_){} });
+    oscs = [];
     syncUI(); drawTacho(0);
   }, 1000);
 }
@@ -298,8 +348,12 @@ function shutDown() {
 function loop() {
   if (!running) return;
   const p = PROFS[profKey];
+  // Manual throttle drives pseudoV when there's no live accelerometer.
+  if (throttle) pseudoV = Math.min(100, pseudoV + 2.4);
+  else if (!motionSeen) pseudoV = Math.max(0, pseudoV * 0.94 - 0.3);
   targRPM = p.idle + (pseudoV / 100) * (p.max - p.idle);
-  curRPM += (targRPM - curRPM) * 0.07;
+  // Higher factor = snappier throttle response (less lag between motion and revs).
+  curRPM += (targRPM - curRPM) * 0.18;
   curRPM = Math.max(p.idle * 0.94, Math.min(p.max, curRPM));
   if (curRPM > p.idle * 1.05) engState = 'running';
   else if (running) engState = 'idle';
@@ -313,14 +367,14 @@ const LABELS = { off:'OFF', starting:'CRANKING', idle:'IDLE', running:'RUNNING',
 const TEXTS  = { off:'Engine off — tap Start', starting:'Cranking...', idle:'Idling — accelerate to rev', running:'Running', stopping:'Shutting down...' };
 
 function syncUI() {
-  document.getElementById('stLbl').textContent = LABELS[engState] || '';
-  document.getElementById('stText').textContent = TEXTS[engState] || '';
+  el.stLbl.textContent = LABELS[engState] || '';
+  el.stText.textContent = TEXTS[engState] || '';
   const live = engState !== 'off';
-  document.getElementById('pip1').classList.toggle('live', live);
-  document.getElementById('pip2').classList.toggle('live', live);
+  el.pip1.classList.toggle('live', live);
+  el.pip2.classList.toggle('live', live);
 }
 
-function setHint(t) { document.getElementById('hint').textContent = t; }
+function setHint(t) { el.hint.textContent = t; }
 
 // ── Tachometer Drawing ─────────────────────────────────────────────────────────
 const CX = 135, CY = 135, R = 110;
@@ -345,32 +399,37 @@ function drawTacho(rpm) {
   const p = PROFS[profKey];
   const norm = Math.min(rpm / p.max, 1);
 
-  document.getElementById('rpmNum').textContent = Math.round(rpm / 10) * 10;
+  el.rpmNum.textContent = Math.round(rpm / 10) * 10;
 
   // Needle angle: -140deg at 0, +140deg at max
   const ang = -140 + norm * 280;
-  document.getElementById('needle').setAttribute('transform', `rotate(${ang}, ${CX}, ${CY})`);
+  el.needle.setAttribute('transform', `rotate(${ang}, ${CX}, ${CY})`);
 
   const REDLINE = 0.78;
   if (norm > REDLINE) {
-    // Normal arc up to redline
-    const [rx, ry] = polar(ARC_START + ARC_SWEEP * REDLINE);
-    const [sx2, sy2] = polar(ARC_START);
-    document.getElementById('arcFill').setAttribute('d', arcPath(REDLINE));
+    el.arcFill.setAttribute('d', arcPath(REDLINE));
     // Redline arc
     const [rsx, rsy] = polar(ARC_START + ARC_SWEEP * REDLINE);
     const [rex, rey] = polar(ARC_START + ARC_SWEEP * norm);
     const rl = ARC_SWEEP * (norm - REDLINE) > 180 ? 1 : 0;
-    document.getElementById('arcRed').setAttribute('d',
-      `M ${rsx} ${rsy} A ${R} ${R} 0 ${rl} 1 ${rex} ${rey}`);
-    document.getElementById('arcRed').style.opacity = '1';
-    document.getElementById('needle').setAttribute('stroke', '#FF0000');
+    el.arcRed.setAttribute('d', `M ${rsx} ${rsy} A ${R} ${R} 0 ${rl} 1 ${rex} ${rey}`);
+    el.arcRed.style.opacity = '1';
+    el.needle.setAttribute('stroke', '#FF0000');
   } else {
-    document.getElementById('arcFill').setAttribute('d', arcPath(norm));
-    document.getElementById('arcRed').style.opacity = '0';
-    document.getElementById('needle').setAttribute('stroke', '#FF3800');
+    el.arcFill.setAttribute('d', arcPath(norm));
+    el.arcRed.style.opacity = '0';
+    el.needle.setAttribute('stroke', '#FF3800');
   }
 }
+
+// ── Manual throttle bindings (hold the dial / press Space) ───────────────────────
+el.tacho.addEventListener('pointerdown', e => { e.preventDefault(); setThrottle(true); });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+  el.tacho.addEventListener(ev, () => setThrottle(false)));
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.repeat) { e.preventDefault(); setThrottle(true); }
+});
+window.addEventListener('keyup', e => { if (e.code === 'Space') setThrottle(false); });
 
 // init
 drawTacho(0); syncUI();
