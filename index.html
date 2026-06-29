@@ -143,29 +143,34 @@ const el = {
 
 // ── Profiles ───────────────────────────────────────────────────────────────────
 const PROFS = {
+  // Inline-4 superbike: smooth, bright, screams to redline. Fast even firing.
   sport: {
-    idle: 1300, max: 9500,
-    harmonics:     [1,    2,    3,    4,    6,    8   ],
-    gains:         [0.55, 0.28, 0.18, 0.12, 0.05, 0.02],
-    noise: 0.04, filterBase: 700,
-    fireMul: 2.0, firePulse: 0.30, subMul: 0.5, subLevel: 0.18, bodyHz: 170,
-    hzFn: rpm => rpm / 60 * 2.2,
+    idle: 1400, max: 12000,
+    harmonics:     [1,    2,    3,    4,    5,    6   ],
+    gains:         [0.40, 0.30, 0.24, 0.18, 0.12, 0.07],
+    noise: 0.03, filterBase: 1100, drive: 1.25,
+    fireMul: 2.0, firePulse: 0.16, subMul: 0.5, subLevel: 0.12, bodyHz: 240,
+    hzFn: rpm => rpm / 60 * 2.0,
   },
+  // V-twin cruiser: real recorded Harley loop, pitch-shifted by RPM.
+  // (Synth params kept as a fallback if the sample fails to load.)
   vtwin: {
-    idle: 900, max: 6800,
-    harmonics:     [1,    2,    3,    5,    7   ],
-    gains:         [0.7,  0.38, 0.18, 0.08, 0.04],
-    noise: 0.07, filterBase: 550,
-    fireMul: 1.0, firePulse: 0.55, subMul: 0.5, subLevel: 0.30, bodyHz: 95,
-    hzFn: rpm => rpm / 60 * 1.4,
+    idle: 750, max: 5500,
+    sample: 'vtwin.mp3', sampleRpm: 1000, sampleGain: 1.7,
+    harmonics:     [1,    2,    3,    4   ],
+    gains:         [0.75, 0.45, 0.22, 0.09],
+    noise: 0.10, filterBase: 520, drive: 1.6,
+    fireMul: 0.85, firePulse: 0.85, subMul: 0.5, subLevel: 0.35, bodyHz: 90,
+    hzFn: rpm => rpm / 60 * 1.0,
   },
+  // Electric: clean high whine, no combustion pulse, rises smoothly. Upper-harmonic heavy.
   electric: {
-    idle: 250, max: 8500,
-    harmonics:     [1,   2,   4,   8,   16  ],
-    gains:         [0.08,0.25,0.4, 0.2, 0.08],
-    noise: 0.008, filterBase: 2500,
-    fireMul: 1.0, firePulse: 0.10, subMul: 1.0, subLevel: 0.06, bodyHz: 480,
-    hzFn: rpm => rpm / 60 * 3.5,
+    idle: 200, max: 9000,
+    harmonics:     [1,    2,    4,    6   ],
+    gains:         [0.05, 0.30, 0.45, 0.16],
+    noise: 0.004, filterBase: 3200, drive: 0.55,
+    fireMul: 6.0, firePulse: 0.03, subMul: 1.0, subLevel: 0.03, bodyHz: 700,
+    hzFn: rpm => rpm / 60 * 4.0,
   },
 };
 
@@ -180,6 +185,23 @@ function setProf(k) {
 // ── Audio ──────────────────────────────────────────────────────────────────────
 let ctx, master, filt, noiseGain, noiseSource, oscBus, shaper, fireLFO, fireDepth, sub, subGain, formant, formantGain;
 let oscs = [];
+
+// Sample playback: preload the raw bytes now; decode once the AudioContext exists.
+const BUFFERS = {};
+const sampleBytes = {};
+['vtwin.mp3'].forEach(url => {
+  fetch(url).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+    .then(ab => { sampleBytes[url] = ab; if (ctx) decodeSample(url); })
+    .catch(() => {}); // fall back to synth if the file can't be fetched
+});
+function decodeSample(url) {
+  if (!sampleBytes[url] || BUFFERS[url]) return;
+  ctx.decodeAudioData(sampleBytes[url].slice(0)).then(b => {
+    BUFFERS[url] = b;
+    // If we're already running this profile on the synth fallback, swap to the sample.
+    if (running && PROFS[profKey].sample === url) rebuildOscs();
+  }).catch(() => {});
+}
 let running = false, engState = 'off';
 let curRPM = 0, targRPM = 0, raf = null;
 
@@ -223,12 +245,28 @@ function initAudio() {
   sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 30;
   subGain = ctx.createGain(); subGain.gain.value = 0;
   sub.connect(subGain); subGain.connect(filt); sub.start();
+
+  // Decode any samples whose bytes already arrived.
+  Object.keys(sampleBytes).forEach(decodeSample);
 }
 
 function rebuildOscs() {
-  oscs.forEach(o => { try { o.osc.stop(); } catch(_){} });
+  oscs.forEach(o => { try { (o.osc || o.src).stop(); } catch(_){} });
   oscs = [];
   const p = PROFS[profKey];
+
+  // Sample-based profile: loop the recording, pitch it with playbackRate (clean path).
+  if (p.sample && BUFFERS[p.sample]) {
+    const src = ctx.createBufferSource();
+    src.buffer = BUFFERS[p.sample];
+    src.loop = true;
+    const g = ctx.createGain(); g.gain.value = p.sampleGain || 1;
+    src.connect(g); g.connect(master);
+    src.start();
+    oscs.push({ src, gain: g, isSample: true });
+    return;
+  }
+
   p.harmonics.forEach((h, i) => {
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
@@ -247,6 +285,17 @@ function applySound(rpm) {
   const hz = p.hzFn(rpm);
   const norm = Math.max(0, (rpm - p.idle) / (p.max - p.idle));
   const t = ctx.currentTime;
+
+  // Sample profile: just pitch the loop with RPM and keep the synth layers silent.
+  if (oscs[0].isSample) {
+    const rate = Math.min(3.4, Math.max(0.55, rpm / p.sampleRpm));
+    oscs[0].src.playbackRate.setTargetAtTime(rate, t, 0.07);
+    noiseGain.gain.setTargetAtTime(0, t, 0.05);
+    fireDepth.gain.setTargetAtTime(0, t, 0.05);
+    subGain.gain.setTargetAtTime(0, t, 0.05);
+    return;
+  }
+
   oscs.forEach(({ osc, gain, h, baseGain }) => {
     osc.frequency.setTargetAtTime(hz * h, t, 0.04);
     const hiBoost = h > 2 ? 0.4 + norm * 0.9 : 1;
@@ -256,7 +305,8 @@ function applySound(rpm) {
   noiseGain.gain.setTargetAtTime(p.noise * (0.4 + norm * 0.9), t, 0.06);
 
   // Drive harder into the soft-clip as you rev → more grit/aggression up top.
-  oscBus.gain.setTargetAtTime(0.9 + norm * 1.0, t, 0.05);
+  // Per-profile drive keeps Electric clean while V-Twin/Sport get gritty.
+  oscBus.gain.setTargetAtTime(p.drive * (0.8 + norm * 0.8), t, 0.05);
   // Exhaust resonance opens up slightly with RPM.
   formant.frequency.setTargetAtTime(p.bodyHz + norm * 140, t, 0.1);
 
@@ -338,7 +388,15 @@ async function startUp() {
   master.gain.setValueAtTime(0, t0);
   master.gain.linearRampToValueAtTime(0.7, t0 + 0.25);
 
-  oscs.forEach(({ osc, h }) => {
+  oscs.forEach(o => {
+    if (o.isSample) {
+      // Crank: spin the recording up from a slow rate to idle.
+      o.src.playbackRate.setValueAtTime(0.4, t0);
+      o.src.playbackRate.linearRampToValueAtTime(0.85, t0 + 0.7);
+      o.src.playbackRate.linearRampToValueAtTime(p.idle / p.sampleRpm, t0 + 1.5);
+      return;
+    }
+    const { osc, h } = o;
     osc.frequency.setValueAtTime(p.hzFn(120) * h, t0);
     osc.frequency.linearRampToValueAtTime(p.hzFn(p.idle * 1.45) * h, t0 + 0.7);
     osc.frequency.linearRampToValueAtTime(p.hzFn(p.idle) * h, t0 + 1.5);
@@ -360,7 +418,14 @@ function shutDown() {
 
   const p = PROFS[profKey];
   const t = ctx.currentTime;
-  oscs.forEach(({ osc, h }) => {
+  oscs.forEach(o => {
+    if (o.isSample) {
+      o.src.playbackRate.cancelScheduledValues(t);
+      o.src.playbackRate.setValueAtTime(o.src.playbackRate.value, t);
+      o.src.playbackRate.linearRampToValueAtTime(0.4, t + 0.7);
+      return;
+    }
+    const { osc, h } = o;
     osc.frequency.cancelScheduledValues(t);
     osc.frequency.setValueAtTime(osc.frequency.value, t);
     osc.frequency.linearRampToValueAtTime(p.hzFn(p.idle * 0.4) * h, t + 0.7);
@@ -375,8 +440,8 @@ function shutDown() {
 
   setTimeout(() => {
     engState = 'off'; running = false; curRPM = 0; pseudoV = 0;
-    // Free oscillators while silent (saves battery); startUp rebuilds them.
-    oscs.forEach(o => { try { o.osc.stop(); } catch(_){} });
+    // Free sources while silent (saves battery); startUp rebuilds them.
+    oscs.forEach(o => { try { (o.osc || o.src).stop(); } catch(_){} });
     oscs = [];
     syncUI(); drawTacho(0);
   }, 1000);
