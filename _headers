@@ -1,0 +1,7 @@
+# Always revalidate the HTML so new versions/deploys show without a hard refresh.
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Audio rarely changes and filenames are stable — cache it for a year (saves bandwidth).
+/*.mp3
+  Cache-Control: public, max-age=31536000, immutable

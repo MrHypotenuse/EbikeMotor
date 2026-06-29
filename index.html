@@ -95,7 +95,7 @@ body {
 </head>
 <body>
 
-<div class="version" id="version">v1.0.0</div>
+<div class="version" id="version">v1.0.1</div>
 
 <div class="header">
   <div class="brand">Evoque</div>
@@ -572,10 +572,9 @@ el.tacho.addEventListener('pointerdown', e => { e.preventDefault(); setThrottle(
 ['pointerup', 'pointercancel'].forEach(ev =>
   window.addEventListener(ev, () => setThrottle(false)));
 
-// init — build the audio graph now (suspended) and preload+decode every sample so the
-// first Start is instant and reliable.
+// init — build the audio graph now (suspended). Samples are loaded lazily (only when a
+// profile is actually started/selected) to save bandwidth; startUp() awaits the decode.
 initAudio();
-['vtwin.mp3', 'inline6.mp3', 'twostroke.mp3', 'sport.mp3'].forEach(u => ensureSample(u).catch(() => {}));
 drawTacho(0); syncUI();
 </script>
 </body>
