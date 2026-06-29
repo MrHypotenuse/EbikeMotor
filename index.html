@@ -148,6 +148,7 @@ const PROFS = {
     harmonics:     [1,    2,    3,    4,    6,    8   ],
     gains:         [0.55, 0.28, 0.18, 0.12, 0.05, 0.02],
     noise: 0.04, filterBase: 700,
+    fireMul: 2.0, firePulse: 0.30, subMul: 0.5, subLevel: 0.18,
     hzFn: rpm => rpm / 60 * 2.2,
   },
   vtwin: {
@@ -155,6 +156,7 @@ const PROFS = {
     harmonics:     [1,    2,    3,    5,    7   ],
     gains:         [0.7,  0.38, 0.18, 0.08, 0.04],
     noise: 0.07, filterBase: 550,
+    fireMul: 1.0, firePulse: 0.55, subMul: 0.5, subLevel: 0.30,
     hzFn: rpm => rpm / 60 * 1.4,
   },
   electric: {
@@ -162,6 +164,7 @@ const PROFS = {
     harmonics:     [1,   2,   4,   8,   16  ],
     gains:         [0.08,0.25,0.4, 0.2, 0.08],
     noise: 0.008, filterBase: 2500,
+    fireMul: 1.0, firePulse: 0.10, subMul: 1.0, subLevel: 0.06,
     hzFn: rpm => rpm / 60 * 3.5,
   },
 };
@@ -175,7 +178,7 @@ function setProf(k) {
 }
 
 // ── Audio ──────────────────────────────────────────────────────────────────────
-let ctx, master, filt, noiseGain, noiseSource, oscBus, shaper;
+let ctx, master, filt, noiseGain, noiseSource, oscBus, shaper, fireLFO, fireDepth, sub, subGain;
 let oscs = [];
 let running = false, engState = 'off';
 let curRPM = 0, targRPM = 0, raf = null;
@@ -204,6 +207,17 @@ function initAudio() {
   noiseSource = ctx.createBufferSource();
   noiseSource.buffer = buf; noiseSource.loop = true;
   noiseSource.connect(noiseGain); noiseSource.start();
+
+  // Firing-pulse tremolo: modulates the oscillator bus at the cylinder-firing rate,
+  // giving the rhythmic chug/"potato" instead of a flat tone. Adds to oscBus.gain (base 1).
+  fireLFO = ctx.createOscillator(); fireLFO.type = 'sawtooth'; fireLFO.frequency.value = 20;
+  fireDepth = ctx.createGain(); fireDepth.gain.value = 0;
+  fireLFO.connect(fireDepth); fireDepth.connect(oscBus.gain); fireLFO.start();
+
+  // Sub-octave sine for low-end body/thump (shines through car speakers).
+  sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 30;
+  subGain = ctx.createGain(); subGain.gain.value = 0;
+  sub.connect(subGain); subGain.connect(filt); sub.start();
 }
 
 function rebuildOscs() {
@@ -234,6 +248,13 @@ function applySound(rpm) {
   });
   filt.frequency.setTargetAtTime(p.filterBase + norm * 3200, t, 0.1);
   noiseGain.gain.setTargetAtTime(p.noise * (0.4 + norm * 0.9), t, 0.06);
+
+  // Firing pulses: rate climbs with RPM; depth eases off so it smooths out at the top.
+  fireLFO.frequency.setTargetAtTime(Math.max(4, rpm / 60 * p.fireMul), t, 0.03);
+  fireDepth.gain.setTargetAtTime(p.firePulse * (1 - norm * 0.5), t, 0.05);
+  // Sub-octave body.
+  sub.frequency.setTargetAtTime(hz * p.subMul, t, 0.04);
+  subGain.gain.setTargetAtTime(p.subLevel * (0.7 + norm * 0.5), t, 0.06);
 }
 
 // ── Input: motion (mobile) + manual throttle (desktop / no accelerometer) ────────
