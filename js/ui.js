@@ -20,6 +20,7 @@ const CX = 135, CY = 135, R = 110;
 // SVG track ring and the needle rotation in drawTacho.
 const ARC_START = -140; // degrees from top
 const ARC_SWEEP = 280;
+const REDLINE = 0.78;   // normalized RPM where the redline begins
 
 function polar(deg, r) {
   r = r || R;
@@ -27,14 +28,16 @@ function polar(deg, r) {
   return [CX + r * Math.cos(rad), CY + r * Math.sin(rad)];
 }
 
-function arcPath(norm) {
-  if (norm < 0.002) return '';
-  const n = Math.min(norm, 1);
-  const [sx, sy] = polar(ARC_START);
-  const [ex, ey] = polar(ARC_START + ARC_SWEEP * n);
-  const large = ARC_SWEEP * n > 180 ? 1 : 0;
+// SVG arc between two normalized positions (0..1) along the gauge sweep.
+function arcSegment(from, to) {
+  if (to - from < 0.002) return '';
+  const [sx, sy] = polar(ARC_START + ARC_SWEEP * from);
+  const [ex, ey] = polar(ARC_START + ARC_SWEEP * to);
+  const large = ARC_SWEEP * (to - from) > 180 ? 1 : 0;
   return `M ${sx} ${sy} A ${R} ${R} 0 ${large} 1 ${ex} ${ey}`;
 }
+
+const arcPath = norm => arcSegment(0, Math.min(norm, 1));
 
 // ── Tick marks — generated per profile (different max RPMs) ────────────────────
 let lastTickProfile = null;
@@ -62,7 +65,7 @@ function drawTicks() {
     tick.setAttribute('x1', ix); tick.setAttribute('y1', iy);
     tick.setAttribute('x2', ox); tick.setAttribute('y2', oy);
 
-    const inRedline = norm >= 0.78;
+    const inRedline = norm >= REDLINE;
     tick.setAttribute('stroke', inRedline ? '#FF0000' : '#3A3A3A');
     tick.setAttribute('stroke-width', '1.5');
     tick.setAttribute('stroke-linecap', 'round');
@@ -91,7 +94,7 @@ function drawTicks() {
       const minorTick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       minorTick.setAttribute('x1', mix); minorTick.setAttribute('y1', miy);
       minorTick.setAttribute('x2', mox); minorTick.setAttribute('y2', moy);
-      minorTick.setAttribute('stroke', midNorm >= 0.78 ? '#661111' : '#252525');
+      minorTick.setAttribute('stroke', midNorm >= REDLINE ? '#661111' : '#252525');
       minorTick.setAttribute('stroke-width', '1');
       minorTick.setAttribute('stroke-linecap', 'round');
       g.appendChild(minorTick);
@@ -105,11 +108,10 @@ function drawTacho(rpm) {
 
   el.rpmNum.textContent = Math.round(rpm / 10) * 10;
 
-  // Needle angle: -140deg at 0, +140deg at max
-  const ang = -140 + norm * 280;
+  // Needle angle: ARC_START at 0, ARC_START + ARC_SWEEP at max
+  const ang = ARC_START + ARC_SWEEP * norm;
   el.needle.setAttribute('transform', `rotate(${ang}, ${CX}, ${CY})`);
 
-  const REDLINE = 0.78;
   const inRedline = norm > REDLINE;
 
   // Needle glow intensity
@@ -124,11 +126,7 @@ function drawTacho(rpm) {
 
   if (inRedline) {
     el.arcFill.setAttribute('d', arcPath(REDLINE));
-    // Redline arc
-    const [rsx, rsy] = polar(ARC_START + ARC_SWEEP * REDLINE);
-    const [rex, rey] = polar(ARC_START + ARC_SWEEP * norm);
-    const rl = ARC_SWEEP * (norm - REDLINE) > 180 ? 1 : 0;
-    el.arcRed.setAttribute('d', `M ${rsx} ${rsy} A ${R} ${R} 0 ${rl} 1 ${rex} ${rey}`);
+    el.arcRed.setAttribute('d', arcSegment(REDLINE, norm));
     el.arcRed.style.opacity = '1';
     el.needle.setAttribute('stroke', '#FF0000');
   } else {
@@ -146,11 +144,5 @@ function drawTacho(rpm) {
       ? `rgba(255, 30, 0, ${(glowAlpha * 1.5).toFixed(3)})`
       : `rgba(255, 56, 0, ${glowAlpha.toFixed(3)})`
   );
-
-  // Tacho glass glow
-  el.tachoGlass.style.boxShadow = `
-    0 0 ${40 + glowIntensity * 40}px -20px rgba(255, 56, 0, ${(glowIntensity * 0.25).toFixed(3)}),
-    inset 0 1px 0 rgba(255,255,255,0.04),
-    inset 0 -1px 0 rgba(0,0,0,0.3)
-  `;
+  // (.tacho-glass box-shadow reacts to --glow-intensity directly in CSS)
 }

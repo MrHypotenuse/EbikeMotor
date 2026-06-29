@@ -6,5 +6,5 @@ const el = {
   startBtn: $('startBtn'), needle: $('needle'),
   arcFill: $('arcFill'), arcRed: $('arcRed'), tacho: $('tachoWrap'),
   arcGlowPath: $('arcGlowPath'), tickGroup: $('tickGroup'),
-  ambientGlow: $('ambientGlow'), tachoGlass: $('tachoGlass'),
+  ambientGlow: $('ambientGlow'),
 };
