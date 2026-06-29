@@ -8,8 +8,8 @@ function onMotion(e) {
   const now = Date.now();
   const dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
   const mag = Math.sqrt((a.x||0)**2 + (a.y||0)**2);
-  if (mag > 0.05) pseudoV += mag * dt * 45;
-  pseudoV *= Math.pow(0.95, dt * 60);
+  if (mag > 0.05) pseudoV += mag * dt * 90;
+  pseudoV *= Math.pow(0.97, dt * 60);
   pseudoV = Math.max(0, Math.min(100, pseudoV));
 }
 
