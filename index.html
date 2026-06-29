@@ -303,9 +303,12 @@ async function toggleEngine() {
 }
 
 async function startUp() {
+  // Request motion permission FIRST, while the tap's user activation is still alive.
+  // Awaiting ctx.resume() before this makes iOS drop the gesture and skip the prompt
+  // until a second tap — so order matters here.
+  const motion = await askMotion();
   if (!ctx) initAudio();
   if (ctx.state === 'suspended') await ctx.resume();
-  const motion = await askMotion();
   const MOTION_MSG = {
     granted:  'Motion active — accelerate to rev!',
     denied:   'Motion blocked — enable Settings ▸ Safari ▸ Motion & Orientation Access, then reload',
