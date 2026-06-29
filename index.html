@@ -156,7 +156,7 @@ const PROFS = {
   // (Synth params kept as a fallback if the sample fails to load.)
   vtwin: {
     idle: 750, max: 5500,
-    sample: 'vtwin.mp3', sampleRpm: 1000, sampleGain: 1.7,
+    sample: 'vtwin.mp3', sampleRpm: 1000, sampleGain: 1.7, samplePitch: 0.7,
     harmonics:     [1,    2,    3,    4   ],
     gains:         [0.75, 0.45, 0.22, 0.09],
     noise: 0.10, filterBase: 520, drive: 1.6,
@@ -286,13 +286,18 @@ function applySound(rpm) {
   const norm = Math.max(0, (rpm - p.idle) / (p.max - p.idle));
   const t = ctx.currentTime;
 
-  // Sample profile: just pitch the loop with RPM and keep the synth layers silent.
+  // Overall loudness rises with revs/speed (quiet at idle, full at redline).
+  master.gain.setTargetAtTime(0.42 + norm * 0.48, t, 0.08);
+
+  // Sample profile: pitch the loop with RPM (samplePitch shifts the whole thing deeper),
+  // plus a sub-octave sine underneath for extra low-end chest. Other synth layers stay off.
   if (oscs[0].isSample) {
-    const rate = Math.min(3.4, Math.max(0.55, rpm / p.sampleRpm));
+    const rate = Math.min(2.6, Math.max(0.4, rpm / p.sampleRpm * (p.samplePitch || 1)));
     oscs[0].src.playbackRate.setTargetAtTime(rate, t, 0.07);
     noiseGain.gain.setTargetAtTime(0, t, 0.05);
     fireDepth.gain.setTargetAtTime(0, t, 0.05);
-    subGain.gain.setTargetAtTime(0, t, 0.05);
+    sub.frequency.setTargetAtTime(34 + norm * 40, t, 0.06);
+    subGain.gain.setTargetAtTime(0.35 + norm * 0.25, t, 0.06);
     return;
   }
 
@@ -390,10 +395,11 @@ async function startUp() {
 
   oscs.forEach(o => {
     if (o.isSample) {
-      // Crank: spin the recording up from a slow rate to idle.
-      o.src.playbackRate.setValueAtTime(0.4, t0);
-      o.src.playbackRate.linearRampToValueAtTime(0.85, t0 + 0.7);
-      o.src.playbackRate.linearRampToValueAtTime(p.idle / p.sampleRpm, t0 + 1.5);
+      // Crank: spin the recording up from a slow rate to the (deeper) idle pitch.
+      const idleRate = p.idle / p.sampleRpm * (p.samplePitch || 1);
+      o.src.playbackRate.setValueAtTime(0.3, t0);
+      o.src.playbackRate.linearRampToValueAtTime(idleRate * 1.4, t0 + 0.7);
+      o.src.playbackRate.linearRampToValueAtTime(idleRate, t0 + 1.5);
       return;
     }
     const { osc, h } = o;
