@@ -11,8 +11,11 @@ const PROFS = {
   // Inline-6 — Honda CBX. Deep, smooth, multi-cylinder wail.
   inline6: {
     idle: 900, max: 9500,
-    sample: 'inline6.mp3', sampleLo: 0.5, sampleHi: 1.85, sampleGain: 1.7, sampleSub: 0.32,
-    loopPos: 0.4, loopLen: 0.9,
+    sample: 'inline6.mp3', sampleLo: 0.5, sampleHi: 1.85, sampleGain: 1.7, sampleSub: 0.32, loopPos: 0.4, loopLen: 0.9,
+    harmonics: [1, 1.5, 2, 3, 4, 6], gains: [0.8, 0.2, 0.5, 0.4, 0.2, 0.1],
+    noise: 0.05, filterBase: 800, drive: 1.2,
+    fireMul: 3.0, firePulse: 0.3, subMul: 1.5, subLevel: 0.2, bodyHz: 120,
+    hzFn: rpm => rpm / 60 * 3.0,
   },
   // V-twin cruiser — Harley Iron 883. Deep, lumpy.
   vtwin: {
@@ -28,22 +31,10 @@ const PROFS = {
   twostroke: {
     idle: 1200, max: 9500,
     sample: 'twostroke.mp3', sampleLo: 0.7, sampleHi: 2.4, sampleGain: 1.8, sampleSub: 0.10,
-    loopPos: 0.4, loopLen: 0.7,
-  },
-  // Sport — Suzuki GSX-R 600 inline-4. Real superbike scream.
-  sport: {
-    idle: 1400, max: 14000,
-    sample: 'sport.mp3', sampleLo: 0.75, sampleHi: 2.55, sampleGain: 1.7, sampleSub: 0.08,
-    loopPos: 0.4, loopLen: 0.8,
-  },
-  // Electric — synthesized EV / "Volt bike" gear-whine: a rising tone, no combustion.
-  electric: {
-    idle: 300, max: 11000,
-    harmonics:     [1,    3,    4,    6   ],
-    gains:         [0.06, 0.10, 0.5,  0.30],
-    noise: 0.012, filterBase: 3600, drive: 0.42,
-    fireMul: 8.0, firePulse: 0.0, subMul: 2.0, subLevel: 0.04, bodyHz: 1400,
-    hzFn: rpm => rpm / 60 * 5.5,
+    harmonics: [1, 2, 3, 4, 5, 7], gains: [0.6, 0.8, 0.5, 0.4, 0.3, 0.2],
+    noise: 0.25, filterBase: 1200, drive: 2.5,
+    fireMul: 2.0, firePulse: 0.7, subMul: 1.0, subLevel: 0.1, bodyHz: 300,
+    hzFn: rpm => rpm / 60 * 2.0,
   },
 };
 

@@ -133,7 +133,7 @@ function applySound(rpm) {
   noiseGain.gain.setTargetAtTime(p.noise * (0.4 + norm * 0.9), t, 0.06);
 
   // Drive harder into the soft-clip as you rev → more grit/aggression up top.
-  // Per-profile drive keeps Electric clean while V-Twin/Sport get gritty.
+  // Per-profile drive: V-Twin and 2-Stroke get more grit up top.
   oscBus.gain.setTargetAtTime(p.drive * (0.8 + norm * 0.8), t, 0.05);
   // Exhaust resonance opens up slightly with RPM.
   formant.frequency.setTargetAtTime(p.bodyHz + norm * 140, t, 0.1);
