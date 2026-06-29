@@ -30,7 +30,7 @@ const PROFS = {
   // 2-stroke — Yamaha RD350 LC. Buzzy, ring-ding, revs high.
   twostroke: {
     idle: 1200, max: 9500,
-    sample: 'twostroke.mp3', sampleLo: 0.7, sampleHi: 2.4, sampleGain: 1.8, sampleSub: 0.10,
+    sample: 'twostroke.mp3', sampleLo: 0.7, sampleHi: 2.4, sampleGain: 1.8, sampleSub: 0.10, loopPos: 0.4, loopLen: 0.7,
     harmonics: [1, 2, 3, 4, 5, 7], gains: [0.6, 0.8, 0.5, 0.4, 0.3, 0.2],
     noise: 0.25, filterBase: 1200, drive: 2.5,
     fireMul: 2.0, firePulse: 0.7, subMul: 1.0, subLevel: 0.1, bodyHz: 300,
